@@ -28,6 +28,10 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        ndk {
+            // Telefonlar: arm64. x86/x86_64 yalnızca emülatör içindir.
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
     buildTypes {
