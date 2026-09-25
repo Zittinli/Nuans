@@ -2,6 +2,8 @@
 //
 // 1. https://console.firebase.google.com adresinden bir proje oluşturun.
 // 2. Authentication > Sign-in method > E-posta/Şifre'yi açın.
+//    Uygulama e-posta doğrulamasını zorunlu kılar ve tek kullanımlık
+//    e-posta adresleriyle kayıt/girişe izin vermez.
 // 3. Firestore Database'i production modunda başlatın.
 // 4. Project settings > Your apps > Android uygulaması ekleyin
 //    Paket adı: com.nuans.nuans

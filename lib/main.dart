@@ -6,6 +6,7 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'firebase_options.dart';
 import 'screens/auth/login_screen.dart';
+import 'screens/auth/verify_email_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/setup/firebase_setup_screen.dart';
 import 'theme/app_theme.dart';
@@ -55,15 +56,19 @@ class AuthGate extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
+      stream: FirebaseAuth.instance.userChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const _LaunchScreen();
         }
-        if (snapshot.hasData) {
-          return const HomeScreen();
+        final user = snapshot.data;
+        if (user == null) {
+          return const LoginScreen();
         }
-        return const LoginScreen();
+        if (!user.emailVerified) {
+          return const VerifyEmailScreen();
+        }
+        return const HomeScreen();
       },
     );
   }

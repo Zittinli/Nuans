@@ -23,6 +23,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
   late final TextEditingController _identity;
   late final TextEditingController _phone;
   late final TextEditingController _diagnosis;
+  late final TextEditingController _referrer;
   DateTime? _birthDate;
   String _gender = 'Belirtilmedi';
   bool _busy = false;
@@ -37,6 +38,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
     _identity = TextEditingController(text: patient?.identityNumber ?? '');
     _phone = TextEditingController(text: patient?.phone ?? '');
     _diagnosis = TextEditingController(text: patient?.diagnosis ?? '');
+    _referrer = TextEditingController(text: patient?.referrer ?? '');
     _birthDate = patient?.birthDate;
     _gender = patient?.gender ?? 'Belirtilmedi';
   }
@@ -47,6 +49,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
     _identity.dispose();
     _phone.dispose();
     _diagnosis.dispose();
+    _referrer.dispose();
     super.dispose();
   }
 
@@ -78,6 +81,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
         gender: _gender,
         phone: _emptyToNull(_phone.text),
         diagnosis: _emptyToNull(_diagnosis.text),
+        referrer: _emptyToNull(_referrer.text),
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
       );
@@ -157,8 +161,18 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
               maxLines: 3,
               textCapitalization: TextCapitalization.sentences,
               decoration: const InputDecoration(
-                labelText: 'Ön tanı / şikayet',
+                labelText: 'Ön tanı',
+                hintText: 'İstediğiniz gibi serbest metin yazabilirsiniz',
                 alignLabelWithHint: true,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _referrer,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Hasta yönlendireni',
+                hintText: 'Doktor, kurum veya kişi',
               ),
             ),
             const SizedBox(height: 24),

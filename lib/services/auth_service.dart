@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../models/doctor.dart';
+import '../utils/disposable_email.dart';
 
 class AuthService {
   AuthService({FirebaseAuth? auth, FirebaseFirestore? firestore})
@@ -13,17 +14,26 @@ class AuthService {
 
   User? get currentUser => _auth.currentUser;
 
-  Stream<User?> authStateChanges() => _auth.authStateChanges();
+  Stream<User?> authStateChanges() => _auth.userChanges();
+
+  bool get isEmailVerified => _auth.currentUser?.emailVerified ?? false;
 
   CollectionReference<Map<String, dynamic>> get _doctors =>
       _db.collection('doctors');
 
   Future<void> signIn({required String email, required String password}) async {
+    final trimmedEmail = email.trim();
+    if (isDisposableEmail(trimmedEmail)) {
+      throw AuthFailure(
+        'Tek kullanımlık e-posta adresleriyle giriş yapılamaz.',
+      );
+    }
     try {
-      await _auth.signInWithEmailAndPassword(
-        email: email.trim(),
+      final credential = await _auth.signInWithEmailAndPassword(
+        email: trimmedEmail,
         password: password,
       );
+      await credential.user?.reload();
     } on FirebaseAuthException catch (error) {
       throw AuthFailure(mapAuthError(error));
     }
@@ -34,9 +44,15 @@ class AuthService {
     required String email,
     required String password,
   }) async {
+    final trimmedEmail = email.trim();
+    if (isDisposableEmail(trimmedEmail)) {
+      throw AuthFailure(
+        'Tek kullanımlık e-posta adresleriyle kayıt olunamaz. Lütfen kalıcı bir e-posta kullanın.',
+      );
+    }
     try {
       final credential = await _auth.createUserWithEmailAndPassword(
-        email: email.trim(),
+        email: trimmedEmail,
         password: password,
       );
       final user = credential.user;
@@ -44,10 +60,11 @@ class AuthService {
         throw AuthFailure('Kayıt tamamlanamadı. Lütfen tekrar deneyin.');
       }
       await user.updateDisplayName(fullName.trim());
+      await user.sendEmailVerification();
       final doctor = Doctor(
         id: user.uid,
         fullName: fullName.trim(),
-        email: email.trim(),
+        email: trimmedEmail,
         createdAt: DateTime.now(),
       );
       await _doctors.doc(user.uid).set(doctor.toMap());
@@ -59,6 +76,46 @@ class AuthService {
   Future<void> sendPasswordReset(String email) async {
     try {
       await _auth.sendPasswordResetEmail(email: email.trim());
+    } on FirebaseAuthException catch (error) {
+      throw AuthFailure(mapAuthError(error));
+    }
+  }
+
+  Future<void> sendEmailVerification() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw AuthFailure('Oturum açık değil.');
+    }
+    try {
+      await user.sendEmailVerification();
+    } on FirebaseAuthException catch (error) {
+      throw AuthFailure(mapAuthError(error));
+    }
+  }
+
+  Future<bool> reloadAndCheckVerified() async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+    await user.reload();
+    return _auth.currentUser?.emailVerified ?? false;
+  }
+
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final user = _auth.currentUser;
+    final email = user?.email;
+    if (user == null || email == null) {
+      throw AuthFailure('Oturum açık değil.');
+    }
+    try {
+      final credential = EmailAuthProvider.credential(
+        email: email,
+        password: currentPassword,
+      );
+      await user.reauthenticateWithCredential(credential);
+      await user.updatePassword(newPassword);
     } on FirebaseAuthException catch (error) {
       throw AuthFailure(mapAuthError(error));
     }
@@ -96,6 +153,8 @@ String mapAuthError(FirebaseAuthException error) {
       return 'Şifre en az 6 karakter olmalı.';
     case 'invalid-email':
       return 'Geçerli bir e-posta adresi girin.';
+    case 'requires-recent-login':
+      return 'Şifre değiştirmek için mevcut şifrenizi tekrar girin.';
     case 'too-many-requests':
       return 'Çok fazla deneme yapıldı. Lütfen sonra tekrar deneyin.';
     case 'network-request-failed':

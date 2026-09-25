@@ -9,6 +9,7 @@ class Patient {
     required this.gender,
     this.phone,
     this.diagnosis,
+    this.referrer,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -20,6 +21,7 @@ class Patient {
   final String gender;
   final String? phone;
   final String? diagnosis;
+  final String? referrer;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -52,6 +54,7 @@ class Patient {
       gender: data['gender'] as String? ?? 'Belirtilmedi',
       phone: data['phone'] as String?,
       diagnosis: data['diagnosis'] as String?,
+      referrer: data['referrer'] as String?,
       createdAt: _readDate(data['createdAt']),
       updatedAt: _readDate(data['updatedAt']),
     );
@@ -65,6 +68,7 @@ class Patient {
       'gender': gender,
       'phone': phone,
       'diagnosis': diagnosis,
+      'referrer': referrer,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
     };
@@ -77,6 +81,7 @@ class Patient {
     String? gender,
     String? phone,
     String? diagnosis,
+    String? referrer,
     DateTime? updatedAt,
   }) {
     return Patient(
@@ -87,6 +92,7 @@ class Patient {
       gender: gender ?? this.gender,
       phone: phone ?? this.phone,
       diagnosis: diagnosis ?? this.diagnosis,
+      referrer: referrer ?? this.referrer,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

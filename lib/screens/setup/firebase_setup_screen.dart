@@ -38,7 +38,7 @@ class FirebaseSetupScreen extends StatelessWidget {
               number: '2',
               title: 'Authentication ve Firestore açın',
               body:
-                  'Authentication > Sign-in method içinde E-posta/Şifre’yi etkinleştirin. Firestore Database’i production modunda başlatın.',
+                  'Authentication > Sign-in method içinde E-posta/Şifre’yi etkinleştirin. Firestore Database’i production modunda başlatın. Uygulama e-posta doğrulaması ve kalıcı e-posta zorunluluğunu kendisi uygular.',
             ),
             const _Step(
               number: '3',
@@ -54,7 +54,7 @@ class FirebaseSetupScreen extends StatelessWidget {
             const _Step(
               number: '5',
               title: 'Güvenlik kurallarını yayınlayın',
-              body: 'firebase deploy --only firestore:rules',
+              body: 'firebase deploy --only firestore:rules,storage',
             ),
             const SizedBox(height: 12),
             Card(

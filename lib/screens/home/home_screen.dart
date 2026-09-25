@@ -6,6 +6,10 @@ import '../../models/patient.dart';
 import '../../services/auth_service.dart';
 import '../../services/clinic_service.dart';
 import '../../theme/app_theme.dart';
+import '../auth/change_password_screen.dart';
+import '../calendar/clinic_calendar_screen.dart';
+import '../form/form_template_editor_screen.dart';
+import '../form/form_management_screen.dart';
 import '../patient/patient_detail_screen.dart';
 import '../patient/patient_form_screen.dart';
 
@@ -35,7 +39,8 @@ class _HomeScreenState extends State<HomeScreen> {
       return patient.fullName.toLowerCase().contains(q) ||
           (patient.identityNumber ?? '').contains(q) ||
           (patient.phone ?? '').contains(q) ||
-          (patient.diagnosis ?? '').toLowerCase().contains(q);
+          (patient.diagnosis ?? '').toLowerCase().contains(q) ||
+          (patient.referrer ?? '').toLowerCase().contains(q);
     }).toList();
   }
 
@@ -60,6 +65,54 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 4),
               Text(user?.email ?? '', style: const TextStyle(color: AppColors.muted)),
               const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const FormTemplateEditorScreen()),
+                  );
+                },
+                icon: const Icon(Icons.post_add_outlined),
+                label: const Text('Form ekle'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const FormManagementScreen(initialTab: FormManagementTab.active),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.checklist_outlined),
+                label: const Text('Aktif formlar'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const FormManagementScreen(initialTab: FormManagementTab.all),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.description_outlined),
+                label: const Text('Formları görüntüle ve düzenle'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ChangePasswordScreen()),
+                  );
+                },
+                icon: const Icon(Icons.lock_reset_outlined),
+                label: const Text('Şifre değiştir'),
+              ),
+              const SizedBox(height: 8),
               OutlinedButton.icon(
                 onPressed: () async {
                   Navigator.of(context).pop();
@@ -96,6 +149,15 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             actions: [
               IconButton(
+                tooltip: 'Takvim',
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ClinicCalendarScreen()),
+                  );
+                },
+                icon: const Icon(Icons.calendar_month_outlined),
+              ),
+              IconButton(
                 tooltip: 'Profil',
                 onPressed: () => _openProfile(doctor),
                 icon: const Icon(Icons.account_circle_outlined),
@@ -119,7 +181,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   controller: _search,
                   onChanged: (value) => setState(() => _query = value),
                   decoration: const InputDecoration(
-                    hintText: 'Ad, T.C., telefon veya tanı ara',
+                    hintText: 'Ad, T.C., telefon, tanı veya yönlendiren ara',
                     prefixIcon: Icon(Icons.search),
                   ),
                 ),
@@ -210,6 +272,15 @@ class _PatientCard extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(color: AppColors.primaryLight),
+                      ),
+                    ],
+                    if (patient.referrer?.isNotEmpty == true) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Yönlendiren: ${patient.referrer}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: AppColors.muted, fontSize: 12),
                       ),
                     ],
                   ],

@@ -1,3 +1,6 @@
+import com.android.build.gradle.internal.api.BaseVariantOutputImpl
+import java.nio.file.Files
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -7,7 +10,7 @@ plugins {
 
 android {
     namespace = "com.nuans.nuans"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = "27.0.12077973"
 
     compileOptions {
@@ -25,7 +28,7 @@ android {
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 23
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         ndk {
@@ -45,4 +48,34 @@ android {
 
 flutter {
     source = "../.."
+}
+
+@Suppress("DEPRECATION")
+android.applicationVariants.configureEach {
+    val variant = this
+    if (variant.buildType.name != "release") return@configureEach
+
+    outputs.configureEach {
+        (this as BaseVariantOutputImpl).outputFileName = "Nuans.apk"
+    }
+
+    assembleProvider.configure {
+        doLast {
+            val apkDir = layout.buildDirectory.dir("outputs/flutter-apk").get().asFile
+            val legacy = apkDir.resolve("app-release.apk")
+            val branded = apkDir.resolve("Nuans.apk")
+            if (!legacy.exists()) return@doLast
+
+            if (branded.exists()) branded.delete()
+            if (!legacy.renameTo(branded)) {
+                legacy.copyTo(branded, overwrite = true)
+                legacy.delete()
+            }
+            try {
+                Files.createLink(legacy.toPath(), branded.toPath())
+            } catch (_: Exception) {
+                branded.copyTo(legacy, overwrite = true)
+            }
+        }
+    }
 }

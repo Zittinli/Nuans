@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/disposable_email.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -88,8 +89,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     prefixIcon: Icon(Icons.mail_outline),
                   ),
                   validator: (value) {
-                    if (value == null || !value.contains('@')) {
+                    if (value == null || !isValidEmailFormat(value)) {
                       return 'Geçerli bir e-posta girin';
+                    }
+                    if (isDisposableEmail(value)) {
+                      return 'Tek kullanımlık e-posta kabul edilmez';
                     }
                     return null;
                   },
