@@ -3,6 +3,13 @@ allprojects {
         google()
         mavenCentral()
     }
+    configurations.configureEach {
+        resolutionStrategy {
+            force("org.jetbrains.kotlin:kotlin-stdlib:2.2.20")
+            force("org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.2.20")
+            force("org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.2.20")
+        }
+    }
 }
 
 val newBuildDir: Directory = rootProject.layout.buildDirectory.dir("../../build").get()
