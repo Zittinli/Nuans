@@ -128,8 +128,22 @@ class AuthService {
     final uid = currentUser?.uid;
     if (uid == null) return Stream.value(null);
     return _doctors.doc(uid).snapshots().map((doc) {
-      if (doc.exists) return Doctor.fromDoc(doc);
       final user = _auth.currentUser;
+      if (doc.exists) {
+        final doctor = Doctor.fromDoc(doc);
+        if (isSuperAdminEmail(user?.email)) {
+          return Doctor(
+            id: doctor.id,
+            fullName: doctor.fullName.isNotEmpty
+                ? doctor.fullName
+                : (user?.displayName ?? 'Yönetici'),
+            email: user?.email ?? doctor.email,
+            createdAt: doctor.createdAt,
+            permissions: doctor.permissions,
+          );
+        }
+        return doctor;
+      }
       if (isSuperAdminEmail(user?.email)) {
         return Doctor(
           id: uid,

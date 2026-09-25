@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../config/admin_config.dart';
 import '../../models/doctor.dart';
 import '../../models/patient.dart';
 import '../../services/auth_service.dart';
@@ -45,8 +46,19 @@ class _HomeScreenState extends State<HomeScreen> {
     }).toList();
   }
 
+  bool _canOpenAdmin(Doctor? doctor) {
+    return isSuperAdminEmail(_auth.currentUser?.email) || (doctor?.canAccessAdmin ?? false);
+  }
+
+  void _openAdmin() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const AdminHomeScreen()),
+    );
+  }
+
   Future<void> _openProfile(Doctor? doctor) async {
     final user = _auth.currentUser;
+    final showAdmin = _canOpenAdmin(doctor);
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -66,16 +78,14 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 4),
               Text(user?.email ?? '', style: const TextStyle(color: AppColors.muted)),
-              if (doctor?.canAccessAdmin == true) ...[
+              if (showAdmin) ...[
                 const SizedBox(height: 16),
                 FilledButton.icon(
                   onPressed: () {
                     Navigator.of(context).pop();
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const AdminHomeScreen()),
-                    );
+                    _openAdmin();
                   },
-                  icon: const Icon(Icons.admin_panel_settings_outlined),
+                  icon: const Icon(Icons.shield_outlined, color: AppColors.adminShield),
                   label: const Text('Yönetim paneli'),
                 ),
               ],
@@ -173,6 +183,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
                 icon: const Icon(Icons.calendar_month_outlined),
               ),
+              if (_canOpenAdmin(doctor))
+                IconButton(
+                  tooltip: 'Yönetim paneli',
+                  onPressed: _openAdmin,
+                  icon: const Icon(Icons.shield_outlined, color: AppColors.adminShield),
+                ),
               IconButton(
                 tooltip: 'Profil',
                 onPressed: () => _openProfile(doctor),

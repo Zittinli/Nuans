@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../config/admin_config.dart';
 import '../../models/app_permission.dart';
 import '../../models/clinic_form.dart';
 import '../../models/doctor.dart';
@@ -22,11 +23,20 @@ class AdminHomeScreen extends StatelessWidget {
     return StreamBuilder<Doctor?>(
       stream: auth.watchProfile(),
       builder: (context, snapshot) {
-        final actor = snapshot.data;
-        if (actor == null) {
+        final user = auth.currentUser;
+        var actor = snapshot.data;
+        if (actor == null && isSuperAdminEmail(user?.email)) {
+          actor = Doctor(
+            id: user!.uid,
+            fullName: user.displayName ?? 'Yönetici',
+            email: user.email ?? kSuperAdminEmail,
+            createdAt: DateTime.now(),
+          );
+        }
+        if (snapshot.connectionState == ConnectionState.waiting && actor == null) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
-        if (!actor.canAccessAdmin) {
+        if (actor == null || !actor.canAccessAdmin) {
           return Scaffold(
             appBar: AppBar(title: const Text('Yönetim')),
             body: const Center(child: Text('Bu bölüme erişim yetkiniz yok.')),
@@ -345,7 +355,7 @@ class AdminAccountDetailScreen extends StatelessWidget {
               if (account.isSuperAdmin)
                 const Card(
                   child: ListTile(
-                    leading: Icon(Icons.verified_user_outlined, color: AppColors.primary),
+                    leading: Icon(Icons.shield_outlined, color: AppColors.adminShield),
                     title: Text('Bu hesap tam yetkilidir'),
                     subtitle: Text(
                       'Hiçbir yönetici bu hesabın yetkisini alamaz. Bu hesap herkesin yetkisini kaldırabilir.',

@@ -12,6 +12,7 @@ class AppColors {
   static const danger = Color(0xFFB42318);
   static const chip = Color(0xFFE6F0EF);
   static const border = Color(0xFFD7E2E0);
+  static const adminShield = Color(0xFFFFD54F);
 }
 
 class AppTheme {
