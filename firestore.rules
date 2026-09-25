@@ -1,28 +1,101 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(doctorId) {
+      return isSignedIn() && request.auth.uid == doctorId;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn()
+        && request.auth.token.email is string
+        && request.auth.token.email.lower() == 'zttnlnkc@gmail.com';
+    }
+
+    function myPermissions() {
+      return exists(/databases/$(database)/documents/doctors/$(request.auth.uid))
+        && get(/databases/$(database)/documents/doctors/$(request.auth.uid)).data.permissions is list
+        ? get(/databases/$(database)/documents/doctors/$(request.auth.uid)).data.permissions
+        : [];
+    }
+
+    function hasPermission(name) {
+      return isSuperAdmin() || name in myPermissions();
+    }
+
+    function canViewAccounts() {
+      return hasPermission('viewAllAccounts') || hasPermission('managePermissions');
+    }
+
+    function canManageUsers() {
+      return hasPermission('managePermissions');
+    }
+
+    function canManageDefaultForms() {
+      return hasPermission('manageDefaultForms');
+    }
+
+    function isTargetSuperAdmin() {
+      return resource.data.email is string
+        && resource.data.email.lower() == 'zttnlnkc@gmail.com';
+    }
+
+    function ownerProfileUpdate(doctorId) {
+      return isOwner(doctorId)
+        && !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['permissions', 'email']);
+    }
+
+    function permissionUpdate() {
+      return canManageUsers()
+        && !isTargetSuperAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['permissions'])
+        && request.resource.data.permissions is list;
+    }
+
+    function isSafeNewDoctor() {
+      return !request.resource.data.keys().hasAny(['permissions'])
+        || request.resource.data.permissions.size() == 0;
+    }
+
     match /doctors/{doctorId} {
-      allow read, write: if request.auth != null && request.auth.uid == doctorId;
+      allow get, list: if isOwner(doctorId) || canViewAccounts();
+      allow create: if isOwner(doctorId) && isSafeNewDoctor();
+      allow update: if ownerProfileUpdate(doctorId) || permissionUpdate();
+      allow delete: if false;
 
       match /patients/{patientId} {
-        allow read, write: if request.auth != null && request.auth.uid == doctorId;
+        allow read: if isOwner(doctorId) || hasPermission('viewAllAccounts');
+        allow write: if isOwner(doctorId);
 
         match /notes/{noteId} {
-          allow read, write: if request.auth != null && request.auth.uid == doctorId;
+          allow read: if isOwner(doctorId) || hasPermission('viewAllAccounts');
+          allow write: if isOwner(doctorId);
         }
 
         match /forms/{formId} {
-          allow read, write: if request.auth != null && request.auth.uid == doctorId;
+          allow read: if isOwner(doctorId) || hasPermission('viewAllAccounts');
+          allow write: if isOwner(doctorId);
         }
       }
 
       match /appointments/{appointmentId} {
-        allow read, write: if request.auth != null && request.auth.uid == doctorId;
+        allow read: if isOwner(doctorId) || hasPermission('viewAllAccounts');
+        allow write: if isOwner(doctorId);
       }
 
       match /formTemplates/{templateId} {
-        allow read, write: if request.auth != null && request.auth.uid == doctorId;
+        allow read: if isOwner(doctorId) || hasPermission('viewAllAccounts');
+        allow write: if isOwner(doctorId);
       }
+    }
+
+    match /globalFormTemplates/{templateId} {
+      allow read: if isSignedIn();
+      allow write: if canManageDefaultForms();
     }
   }
 }

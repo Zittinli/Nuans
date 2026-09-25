@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -38,6 +39,9 @@ class ClinicService {
 
   CollectionReference<Map<String, dynamic>> get _templates =>
       _db.collection('doctors').doc(_uid).collection('formTemplates');
+
+  CollectionReference<Map<String, dynamic>> get _globalTemplates =>
+      _db.collection('globalFormTemplates');
 
   CollectionReference<Map<String, dynamic>> _notes(String patientId) =>
       _patients.doc(patientId).collection('notes');
@@ -161,30 +165,80 @@ class ClinicService {
   }
 
   Stream<List<ClinicFormTemplate>> watchFormTemplates() {
-    return _templates.orderBy('updatedAt', descending: true).snapshots().map(
-          (snapshot) => snapshot.docs.map(ClinicFormTemplate.fromDoc).toList(),
+    final controller = StreamController<List<ClinicFormTemplate>>();
+    List<ClinicFormTemplate>? personal;
+    List<ClinicFormTemplate>? global;
+
+    void emit() {
+      if (personal == null || global == null || controller.isClosed) return;
+      controller.add([...global!, ...personal!]);
+    }
+
+    final personalSub = _templates.orderBy('updatedAt', descending: true).snapshots().listen(
+      (snapshot) {
+        personal = snapshot.docs.map(ClinicFormTemplate.fromDoc).toList();
+        emit();
+      },
+      onError: controller.addError,
+    );
+    final globalSub = _globalTemplates.orderBy('updatedAt', descending: true).snapshots().listen(
+      (snapshot) {
+        global = snapshot.docs
+            .map((doc) => ClinicFormTemplate.fromDoc(doc, isGlobal: true))
+            .toList();
+        emit();
+      },
+      onError: (_) {
+        global = const [];
+        emit();
+      },
+    );
+
+    controller.onCancel = () {
+      personalSub.cancel();
+      globalSub.cancel();
+    };
+    return controller.stream;
+  }
+
+  Stream<List<ClinicFormTemplate>> watchGlobalFormTemplates() {
+    return _globalTemplates.orderBy('updatedAt', descending: true).snapshots().map(
+          (snapshot) => snapshot.docs
+              .map((doc) => ClinicFormTemplate.fromDoc(doc, isGlobal: true))
+              .toList(),
         );
+  }
+
+  CollectionReference<Map<String, dynamic>> _templateCollection(bool isGlobal) {
+    return isGlobal ? _globalTemplates : _templates;
   }
 
   Future<String> saveFormTemplate(ClinicFormTemplate template) async {
     final now = DateTime.now();
-    final data = template.toMap();
+    final user = _auth.currentUser;
+    final data = template
+        .copyWith(
+          createdByUid: template.createdByUid ?? user?.uid,
+          createdByEmail: template.createdByEmail ?? user?.email,
+        )
+        .toMap();
     data['updatedAt'] = Timestamp.fromDate(now);
+    final col = _templateCollection(template.isGlobal);
     if (template.id.isEmpty) {
       data['createdAt'] = Timestamp.fromDate(now);
-      final doc = await _templates.add(data);
+      final doc = await col.add(data);
       return doc.id;
     }
-    await _templates.doc(template.id).set(data, SetOptions(merge: true));
+    await col.doc(template.id).set(data, SetOptions(merge: true));
     return template.id;
   }
 
-  Future<void> deleteFormTemplate(String templateId) {
-    return _templates.doc(templateId).delete();
+  Future<void> deleteFormTemplate(ClinicFormTemplate template) {
+    return _templateCollection(template.isGlobal).doc(template.id).delete();
   }
 
-  Future<void> setFormTemplateActive(String templateId, bool active) async {
-    await _templates.doc(templateId).set(
+  Future<void> setFormTemplateActive(ClinicFormTemplate template, bool active) async {
+    await _templateCollection(template.isGlobal).doc(template.id).set(
       {'active': active, 'updatedAt': Timestamp.fromDate(DateTime.now())},
       SetOptions(merge: true),
     );
@@ -194,9 +248,13 @@ class ClinicService {
     required String templateId,
     required File file,
     required String fileName,
+    bool isGlobal = false,
   }) async {
     final ext = fileName.contains('.') ? fileName.split('.').last.toLowerCase() : 'bin';
-    final ref = _storage.ref('doctors/$_uid/formTemplates/$templateId/source.$ext');
+    final path = isGlobal
+        ? 'globalFormTemplates/$templateId/source.$ext'
+        : 'doctors/$_uid/formTemplates/$templateId/source.$ext';
+    final ref = _storage.ref(path);
     await ref.putFile(file);
     return ref.getDownloadURL();
   }

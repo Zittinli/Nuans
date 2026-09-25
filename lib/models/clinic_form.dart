@@ -102,6 +102,9 @@ class ClinicFormTemplate {
     this.sourceFileUrl,
     this.sourceFileName,
     this.sourceFileKind,
+    this.isGlobal = false,
+    this.createdByUid,
+    this.createdByEmail,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -114,12 +117,20 @@ class ClinicFormTemplate {
   final String? sourceFileUrl;
   final String? sourceFileName;
   final FormSourceKind? sourceFileKind;
+  final bool isGlobal;
+  final String? createdByUid;
+  final String? createdByEmail;
   final DateTime createdAt;
   final DateTime updatedAt;
 
   bool get hasSourceFile => sourceFileUrl != null && sourceFileUrl!.isNotEmpty;
 
-  factory ClinicFormTemplate.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+  String get listKey => isGlobal ? 'global:$id' : 'personal:$id';
+
+  factory ClinicFormTemplate.fromDoc(
+    DocumentSnapshot<Map<String, dynamic>> doc, {
+    bool isGlobal = false,
+  }) {
     final data = doc.data() ?? {};
     return ClinicFormTemplate(
       id: doc.id,
@@ -133,6 +144,9 @@ class ClinicFormTemplate {
       sourceFileUrl: data['sourceFileUrl'] as String?,
       sourceFileName: data['sourceFileName'] as String?,
       sourceFileKind: FormSourceKind.fromName(data['sourceFileKind'] as String?),
+      isGlobal: isGlobal || (data['isGlobal'] as bool? ?? false),
+      createdByUid: data['createdByUid'] as String?,
+      createdByEmail: data['createdByEmail'] as String?,
       createdAt: _readDate(data['createdAt']),
       updatedAt: _readDate(data['updatedAt']),
     );
@@ -147,12 +161,16 @@ class ClinicFormTemplate {
       'sourceFileUrl': sourceFileUrl,
       'sourceFileName': sourceFileName,
       'sourceFileKind': sourceFileKind?.name,
+      'isGlobal': isGlobal,
+      'createdByUid': createdByUid,
+      'createdByEmail': createdByEmail,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
     };
   }
 
   ClinicFormTemplate copyWith({
+    String? id,
     String? name,
     String? description,
     List<ClinicFormField>? fields,
@@ -160,10 +178,13 @@ class ClinicFormTemplate {
     String? sourceFileUrl,
     String? sourceFileName,
     FormSourceKind? sourceFileKind,
+    bool? isGlobal,
+    String? createdByUid,
+    String? createdByEmail,
     DateTime? updatedAt,
   }) {
     return ClinicFormTemplate(
-      id: id,
+      id: id ?? this.id,
       name: name ?? this.name,
       description: description ?? this.description,
       fields: fields ?? this.fields,
@@ -171,10 +192,20 @@ class ClinicFormTemplate {
       sourceFileUrl: sourceFileUrl ?? this.sourceFileUrl,
       sourceFileName: sourceFileName ?? this.sourceFileName,
       sourceFileKind: sourceFileKind ?? this.sourceFileKind,
+      isGlobal: isGlobal ?? this.isGlobal,
+      createdByUid: createdByUid ?? this.createdByUid,
+      createdByEmail: createdByEmail ?? this.createdByEmail,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      other is ClinicFormTemplate && other.listKey == listKey;
+
+  @override
+  int get hashCode => listKey.hashCode;
 }
 
 enum PatientFormSource {

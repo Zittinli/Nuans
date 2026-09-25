@@ -61,7 +61,7 @@ class FormTemplatesScreen extends StatelessWidget {
                   ),
                   trailing: IconButton(
                     tooltip: 'Sil',
-                    onPressed: () => clinic.deleteFormTemplate(template.id),
+                    onPressed: () => clinic.deleteFormTemplate(template),
                     icon: const Icon(Icons.delete_outline, color: AppColors.danger),
                   ),
                   onTap: () {

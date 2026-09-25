@@ -6,6 +6,7 @@ import '../../models/patient.dart';
 import '../../services/auth_service.dart';
 import '../../services/clinic_service.dart';
 import '../../theme/app_theme.dart';
+import '../admin/admin_home_screen.dart';
 import '../auth/change_password_screen.dart';
 import '../calendar/clinic_calendar_screen.dart';
 import '../form/form_template_editor_screen.dart';
@@ -52,7 +53,8 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context) {
         return Padding(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
-          child: Column(
+          child: SingleChildScrollView(
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -64,6 +66,19 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 4),
               Text(user?.email ?? '', style: const TextStyle(color: AppColors.muted)),
+              if (doctor?.canAccessAdmin == true) ...[
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const AdminHomeScreen()),
+                    );
+                  },
+                  icon: const Icon(Icons.admin_panel_settings_outlined),
+                  label: const Text('Yönetim paneli'),
+                ),
+              ],
               const SizedBox(height: 16),
               OutlinedButton.icon(
                 onPressed: () {
@@ -122,6 +137,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 label: const Text('Çıkış yap'),
               ),
             ],
+            ),
           ),
         );
       },

@@ -38,9 +38,9 @@ class _PatientFormSelectorState extends State<PatientFormSelector> {
         }
         final all = snapshot.data ?? const <ClinicFormTemplate>[];
         final active = all.where((item) => item.active).toList();
-        final selected = _selected != null && active.any((item) => item.id == _selected!.id)
-            ? _selected
-            : null;
+        final selected = _selected == null
+            ? null
+            : active.where((item) => item.listKey == _selected!.listKey).firstOrNull;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -69,7 +69,10 @@ class _PatientFormSelectorState extends State<PatientFormSelector> {
                         ...active.map(
                           (template) => DropdownMenuItem(
                             value: template,
-                            child: Text(template.name, overflow: TextOverflow.ellipsis),
+                            child: Text(
+                              template.isGlobal ? '${template.name} (varsayılan)' : template.name,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         ),
                     ],

@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../config/admin_config.dart';
 import '../models/doctor.dart';
 import '../utils/disposable_email.dart';
 
@@ -127,8 +128,17 @@ class AuthService {
     final uid = currentUser?.uid;
     if (uid == null) return Stream.value(null);
     return _doctors.doc(uid).snapshots().map((doc) {
-      if (!doc.exists) return null;
-      return Doctor.fromDoc(doc);
+      if (doc.exists) return Doctor.fromDoc(doc);
+      final user = _auth.currentUser;
+      if (isSuperAdminEmail(user?.email)) {
+        return Doctor(
+          id: uid,
+          fullName: user?.displayName ?? 'Yönetici',
+          email: user?.email ?? kSuperAdminEmail,
+          createdAt: DateTime.now(),
+        );
+      }
+      return null;
     });
   }
 }

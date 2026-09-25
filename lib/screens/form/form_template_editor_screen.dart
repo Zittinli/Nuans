@@ -7,16 +7,23 @@ import '../../models/clinic_form.dart';
 import '../../services/clinic_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/form_attachment.dart';
+import '../../utils/form_pack.dart';
 import '../../widgets/clinic_form_fields.dart';
 import 'form_field_editor_screen.dart';
 
 /// Yeni form oluşturma ve mevcut şablon düzenleme için ortak düzenleyici.
 class FormTemplateEditorScreen extends StatefulWidget {
-  const FormTemplateEditorScreen({super.key, this.template});
+  const FormTemplateEditorScreen({
+    super.key,
+    this.template,
+    this.asGlobal = false,
+  });
 
   final ClinicFormTemplate? template;
+  final bool asGlobal;
 
   bool get isEditing => template != null;
+  bool get isGlobal => asGlobal || (template?.isGlobal ?? false);
 
   @override
   State<FormTemplateEditorScreen> createState() => _FormTemplateEditorScreenState();
@@ -104,19 +111,89 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
   Future<void> _pickSourceFile() async {
     final result = await FilePicker.pickFiles(
       type: FileType.custom,
-      allowedExtensions: const ['pdf', 'doc', 'docx'],
+      allowedExtensions: const ['pdf', 'doc', 'docx', 'nuansform', 'json'],
     );
     if (result == null || result.files.isEmpty) return;
     final file = result.files.single;
     final path = file.path;
     if (path == null) return;
     final ext = file.extension?.toLowerCase();
+    if (ext == 'nuansform' || ext == 'json' || FormPack.looksLikePack(file.name)) {
+      try {
+        final pack = await FormPack.importFile(File(path));
+        await _applyImportedPack(pack);
+      } catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Form aktarılamadı: $error')),
+        );
+      }
+      return;
+    }
     setState(() {
       _pendingSourcePath = path;
       _pendingSourceName = file.name;
       _pendingSourceKind = ext == 'pdf' ? FormSourceKind.pdf : FormSourceKind.word;
       _dirty = true;
     });
+  }
+
+  Future<void> _applyImportedPack(ImportedFormPack pack) async {
+    if (_fields.isNotEmpty || _name.text.trim().isNotEmpty) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Formu aktar'),
+          content: const Text(
+            'Seçilen Nüans form dosyası mevcut adı, alanları ve ekleri değiştirecek. Devam edilsin mi?',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Vazgeç')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Aktar')),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+    setState(() {
+      _name.text = pack.template.name;
+      _description.text = pack.template.description ?? '';
+      _fields = [...pack.template.fields];
+      _pendingSourcePath = pack.sourceFile?.path;
+      _pendingSourceName = pack.sourceFileName;
+      _pendingSourceKind = pack.sourceFileKind;
+      if (pack.sourceFile == null) {
+        _sourceFileUrl = null;
+        _sourceFileName = pack.sourceFileName;
+        _sourceFileKind = pack.sourceFileKind;
+      }
+      _dirty = true;
+    });
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('"${pack.template.name}" aktarıldı. Kaydetmeyi unutmayın.')),
+    );
+  }
+
+  Future<void> _exportForm() async {
+    if (_name.text.trim().isEmpty && _fields.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Dışa aktarmak için form adı veya alan gerekli.')),
+      );
+      return;
+    }
+    try {
+      await FormPack.share(
+        template: _previewTemplate,
+        clinic: _clinic,
+        localSourcePath: _pendingSourcePath,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Form dışa aktarılamadı: $error')),
+      );
+    }
   }
 
   void _clearSourceFile() {
@@ -222,29 +299,44 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
         sourceFileUrl: _sourceFileUrl,
         sourceFileName: _sourceFileName,
         sourceFileKind: _sourceFileKind,
+        isGlobal: widget.isGlobal,
+        createdByUid: widget.template?.createdByUid,
+        createdByEmail: widget.template?.createdByEmail,
         createdAt: widget.template?.createdAt ?? now,
         updatedAt: now,
       );
       final id = await _clinic.saveFormTemplate(template);
       if (_pendingSourcePath != null && _pendingSourceName != null) {
-        final url = await _clinic.uploadFormTemplateSource(
-          templateId: id,
-          file: File(_pendingSourcePath!),
-          fileName: _pendingSourceName!,
-        );
-        template = ClinicFormTemplate(
-          id: id,
-          name: template.name,
-          description: template.description,
-          fields: template.fields,
-          active: template.active,
-          sourceFileUrl: url,
-          sourceFileName: _pendingSourceName,
-          sourceFileKind: _pendingSourceKind,
-          createdAt: template.createdAt,
-          updatedAt: DateTime.now(),
-        );
-        await _clinic.saveFormTemplate(template);
+        try {
+          final url = await _clinic.uploadFormTemplateSource(
+            templateId: id,
+            file: File(_pendingSourcePath!),
+            fileName: _pendingSourceName!,
+            isGlobal: widget.isGlobal,
+          );
+          template = template.copyWith(
+            id: id,
+            sourceFileUrl: url,
+            sourceFileName: _pendingSourceName,
+            sourceFileKind: _pendingSourceKind,
+            updatedAt: DateTime.now(),
+          );
+          await _clinic.saveFormTemplate(template);
+        } catch (_) {
+          if (widget.isGlobal) {
+            template = template.copyWith(id: id, updatedAt: DateTime.now());
+            await _clinic.saveFormTemplate(template);
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Form kaydedildi ancak ek dosya yüklenemedi. Alanlar tüm hesaplarda görünür.'),
+                ),
+              );
+            }
+          } else {
+            rethrow;
+          }
+        }
       }
       if (!mounted) return;
       _initialSnapshot = _snapshot();
@@ -272,6 +364,7 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
         sourceFileUrl: _sourceFileUrl,
         sourceFileName: _pendingSourceName ?? _sourceFileName,
         sourceFileKind: _pendingSourceKind ?? _sourceFileKind,
+        isGlobal: widget.isGlobal,
         createdAt: widget.template?.createdAt ?? DateTime.now(),
         updatedAt: DateTime.now(),
       );
@@ -288,7 +381,11 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Text(widget.isEditing ? 'Formu düzenle' : 'Yeni form'),
+          title: Text(
+            widget.isEditing
+                ? (widget.isGlobal ? 'Varsayılan formu düzenle' : 'Formu düzenle')
+                : (widget.isGlobal ? 'Varsayılan form' : 'Yeni form'),
+          ),
           bottom: TabBar(
             controller: _tabs,
             tabs: const [
@@ -298,6 +395,11 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
             ],
           ),
           actions: [
+            IconButton(
+              tooltip: 'Dışa aktar',
+              onPressed: _busy ? null : _exportForm,
+              icon: const Icon(Icons.ios_share_outlined),
+            ),
             if (_hasUnsavedChanges)
               const Padding(
                 padding: EdgeInsets.only(right: 4),
@@ -346,6 +448,7 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
                     },
               fieldCount: _fields.length,
               hasSourceFile: _pendingSourcePath != null || _sourceFileUrl != null,
+              isGlobal: widget.isGlobal,
             ),
             _FieldsTab(
               fields: _fields,
@@ -396,6 +499,7 @@ class _GeneralTab extends StatelessWidget {
     required this.onViewSource,
     required this.fieldCount,
     required this.hasSourceFile,
+    required this.isGlobal,
   });
 
   final TextEditingController name;
@@ -413,6 +517,7 @@ class _GeneralTab extends StatelessWidget {
   final VoidCallback? onViewSource;
   final int fieldCount;
   final bool hasSourceFile;
+  final bool isGlobal;
 
   @override
   Widget build(BuildContext context) {
@@ -443,10 +548,24 @@ class _GeneralTab extends StatelessWidget {
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Aktif form'),
-          subtitle: const Text('Hasta detayında form seçim listesinde görünsün'),
+          subtitle: Text(
+            isGlobal
+                ? 'Tüm hesapların hasta ekranında görünsün'
+                : 'Hasta detayında form seçim listesinde görünsün',
+          ),
           value: active,
           onChanged: onActiveChanged,
         ),
+        if (isGlobal) ...[
+          const SizedBox(height: 4),
+          const Card(
+            child: ListTile(
+              leading: Icon(Icons.public_outlined),
+              title: Text('Varsayılan form'),
+              subtitle: Text('Bu form kaydedildiğinde bütün hesaplarda görünür.'),
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
         Card(
           child: Padding(
@@ -462,10 +581,10 @@ class _GeneralTab extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 20),
-        const Text('PDF / Word', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+        const Text('Dosya', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
         const SizedBox(height: 8),
         const Text(
-          'Klinikte kullandığınız kağıt formun dijital kopyasını ekleyebilirsiniz. Alanlar sekmesindeki sorular buna ek olarak doldurulur.',
+          'Arkadaşınızın gönderdiği Nüans form dosyasını (.nuansform) seçerek formu içeri aktarın. Klinikte kullandığınız kağıt formun PDF/Word kopyasını da ekleyebilirsiniz.',
           style: TextStyle(color: AppColors.muted, height: 1.4),
         ),
         const SizedBox(height: 12),
