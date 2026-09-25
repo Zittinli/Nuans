@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -47,7 +48,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   bool _canOpenAdmin(Doctor? doctor) {
-    return isSuperAdminEmail(_auth.currentUser?.email) || (doctor?.canAccessAdmin ?? false);
+    return hasAdminAccess(user: _auth.currentUser, doctor: doctor);
   }
 
   void _openAdmin() {
@@ -77,7 +78,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 4),
-              Text(user?.email ?? '', style: const TextStyle(color: AppColors.muted)),
+              Text(
+                user?.email ?? '',
+                style: const TextStyle(color: AppColors.muted),
+              ),
               if (showAdmin) ...[
                 const SizedBox(height: 16),
                 FilledButton.icon(
@@ -156,68 +160,95 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<Doctor?>(
-      stream: _auth.watchProfile(),
-      builder: (context, profileSnap) {
-        final doctor = profileSnap.data;
-        final greetingName = doctor?.fullName.split(' ').first ??
-            _auth.currentUser?.displayName?.split(' ').first ??
-            'Doktor';
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.userChanges(),
+      builder: (context, userSnap) {
+        return StreamBuilder<Doctor?>(
+          stream: _auth.watchProfile(),
+          builder: (context, profileSnap) {
+            final doctor = profileSnap.data;
+            final showAdmin = hasAdminAccess(
+              user: userSnap.data ?? _auth.currentUser,
+              doctor: doctor,
+            );
+            final greetingName = doctor?.fullName.split(' ').first ??
+                _auth.currentUser?.displayName?.split(' ').first ??
+                'Doktor';
 
-        return Scaffold(
-          appBar: AppBar(
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Merhaba, $greetingName', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w400)),
-                const Text('Hastalarım'),
-              ],
-            ),
-            actions: [
-              IconButton(
-                tooltip: 'Takvim',
+            return Scaffold(
+              appBar: AppBar(
+                title: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Merhaba, $greetingName', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w400)),
+                    const Text('Hastalarım'),
+                  ],
+                ),
+                actions: [
+                  IconButton(
+                    tooltip: 'Takvim',
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const ClinicCalendarScreen()),
+                      );
+                    },
+                    icon: const Icon(Icons.calendar_month_outlined),
+                  ),
+                  if (showAdmin)
+                    IconButton(
+                      tooltip: 'Yönetim paneli',
+                      onPressed: _openAdmin,
+                      icon: const Icon(Icons.shield_outlined, color: AppColors.adminShield),
+                    ),
+                  IconButton(
+                    tooltip: 'Profil',
+                    onPressed: () => _openProfile(doctor),
+                    icon: const Icon(Icons.account_circle_outlined),
+                  ),
+                ],
+              ),
+              floatingActionButton: FloatingActionButton.extended(
                 onPressed: () {
                   Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const ClinicCalendarScreen()),
+                    MaterialPageRoute(builder: (_) => const PatientFormScreen()),
                   );
                 },
-                icon: const Icon(Icons.calendar_month_outlined),
+                icon: const Icon(Icons.person_add_alt_1),
+                label: const Text('Yeni hasta'),
               ),
-              if (_canOpenAdmin(doctor))
-                IconButton(
-                  tooltip: 'Yönetim paneli',
-                  onPressed: _openAdmin,
-                  icon: const Icon(Icons.shield_outlined, color: AppColors.adminShield),
-                ),
-              IconButton(
-                tooltip: 'Profil',
-                onPressed: () => _openProfile(doctor),
-                icon: const Icon(Icons.account_circle_outlined),
-              ),
-            ],
-          ),
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const PatientFormScreen()),
-              );
-            },
-            icon: const Icon(Icons.person_add_alt_1),
-            label: const Text('Yeni hasta'),
-          ),
-          body: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: TextField(
-                  controller: _search,
-                  onChanged: (value) => setState(() => _query = value),
-                  decoration: const InputDecoration(
-                    hintText: 'Ad, T.C., telefon, tanı veya yönlendiren ara',
-                    prefixIcon: Icon(Icons.search),
+              body: Column(
+                children: [
+                  if (showAdmin)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                      child: Card(
+                        color: AppColors.primaryDark,
+                        child: ListTile(
+                          leading: const Icon(Icons.shield_outlined, color: AppColors.adminShield, size: 32),
+                          title: const Text(
+                            'Yönetim paneli',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                          ),
+                          subtitle: const Text(
+                            'Hesaplar, yetkiler ve varsayılan formlar',
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                          trailing: const Icon(Icons.chevron_right, color: Colors.white),
+                          onTap: _openAdmin,
+                        ),
+                      ),
+                    ),
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(16, showAdmin ? 8 : 16, 16, 8),
+                    child: TextField(
+                      controller: _search,
+                      onChanged: (value) => setState(() => _query = value),
+                      decoration: const InputDecoration(
+                        hintText: 'Ad, T.C., telefon, tanı veya yönlendiren ara',
+                        prefixIcon: Icon(Icons.search),
+                      ),
+                    ),
                   ),
-                ),
-              ),
               Expanded(
                 child: StreamBuilder<List<Patient>>(
                   stream: _clinic.watchPatients(),
@@ -255,6 +286,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
+            );
+          },
         );
       },
     );

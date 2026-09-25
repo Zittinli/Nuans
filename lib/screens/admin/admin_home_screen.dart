@@ -25,18 +25,13 @@ class AdminHomeScreen extends StatelessWidget {
       builder: (context, snapshot) {
         final user = auth.currentUser;
         var actor = snapshot.data;
-        if (actor == null && isSuperAdminEmail(user?.email)) {
-          actor = Doctor(
-            id: user!.uid,
-            fullName: user.displayName ?? 'Yönetici',
-            email: user.email ?? kSuperAdminEmail,
-            createdAt: DateTime.now(),
-          );
+        if (isSuperAdminUser(user) || isSuperAdminEmail(actor?.email)) {
+          actor = superAdminActor(user: user, profile: actor);
         }
         if (snapshot.connectionState == ConnectionState.waiting && actor == null) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
-        if (actor == null || !actor.canAccessAdmin) {
+        if (!hasAdminAccess(user: user, doctor: actor) || actor == null) {
           return Scaffold(
             appBar: AppBar(title: const Text('Yönetim')),
             body: const Center(child: Text('Bu bölüme erişim yetkiniz yok.')),

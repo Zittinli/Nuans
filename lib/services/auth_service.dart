@@ -131,26 +131,13 @@ class AuthService {
       final user = _auth.currentUser;
       if (doc.exists) {
         final doctor = Doctor.fromDoc(doc);
-        if (isSuperAdminEmail(user?.email)) {
-          return Doctor(
-            id: doctor.id,
-            fullName: doctor.fullName.isNotEmpty
-                ? doctor.fullName
-                : (user?.displayName ?? 'Yönetici'),
-            email: user?.email ?? doctor.email,
-            createdAt: doctor.createdAt,
-            permissions: doctor.permissions,
-          );
+        if (isSuperAdminUser(user) || isSuperAdminEmail(doctor.email)) {
+          return superAdminActor(user: user, profile: doctor);
         }
         return doctor;
       }
-      if (isSuperAdminEmail(user?.email)) {
-        return Doctor(
-          id: uid,
-          fullName: user?.displayName ?? 'Yönetici',
-          email: user?.email ?? kSuperAdminEmail,
-          createdAt: DateTime.now(),
-        );
+      if (isSuperAdminUser(user)) {
+        return superAdminActor(user: user);
       }
       return null;
     });
