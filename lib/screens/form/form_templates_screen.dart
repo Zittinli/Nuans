@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/clinic_form.dart';
 import '../../services/clinic_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/confirm_twice.dart';
 import 'form_builder_screen.dart';
 
 class FormTemplatesScreen extends StatelessWidget {
@@ -61,7 +62,16 @@ class FormTemplatesScreen extends StatelessWidget {
                   ),
                   trailing: IconButton(
                     tooltip: 'Sil',
-                    onPressed: () => clinic.deleteFormTemplate(template),
+                    onPressed: () async {
+                      final ok = await confirmTwice(
+                        context: context,
+                        title: 'Şablonu sil',
+                        firstBody: '"${template.name}" kalıcı olarak silinsin mi?',
+                        secondBody: 'Bu form şablonu geri getirilemez. Emin misiniz?',
+                      );
+                      if (!ok) return;
+                      await clinic.deleteFormTemplate(template);
+                    },
                     icon: const Icon(Icons.delete_outline, color: AppColors.danger),
                   ),
                   onTap: () {

@@ -31,6 +31,7 @@ android {
         targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        resValue("string", "app_name", "Nüans 2.0 (${flutter.versionCode})")
         ndk {
             // Telefonlar: arm64. x86/x86_64 yalnızca emülatör içindir.
             abiFilters += listOf("arm64-v8a")
@@ -56,14 +57,14 @@ android.applicationVariants.configureEach {
     if (variant.buildType.name != "release") return@configureEach
 
     outputs.configureEach {
-        (this as BaseVariantOutputImpl).outputFileName = "Nuans.apk"
+        (this as BaseVariantOutputImpl).outputFileName = "Nuans-2.0.apk"
     }
 
     assembleProvider.configure {
         doLast {
             val apkDir = layout.buildDirectory.dir("outputs/flutter-apk").get().asFile
             val legacy = apkDir.resolve("app-release.apk")
-            val branded = apkDir.resolve("Nuans.apk")
+            val branded = apkDir.resolve("Nuans-2.0.apk")
             if (!legacy.exists()) return@doLast
 
             if (branded.exists()) branded.delete()

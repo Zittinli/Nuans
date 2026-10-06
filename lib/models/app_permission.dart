@@ -13,6 +13,11 @@ enum AppPermission {
     'manageDefaultForms',
     'Varsayılan formlar',
     'Tüm hesaplarda görünen varsayılan formları ekler veya kaldırır.',
+  ),
+  manageFormCategories(
+    'manageFormCategories',
+    'Form kategorileri',
+    'Form kategorilerini ekler, düzenler veya siler.',
   );
 
   const AppPermission(this.id, this.label, this.description);

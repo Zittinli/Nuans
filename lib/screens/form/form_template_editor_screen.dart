@@ -4,8 +4,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/clinic_form.dart';
+import '../../models/form_category.dart';
 import '../../services/clinic_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/confirm_twice.dart';
 import '../../utils/form_attachment.dart';
 import '../../utils/form_pack.dart';
 import '../../widgets/clinic_form_fields.dart';
@@ -17,10 +19,12 @@ class FormTemplateEditorScreen extends StatefulWidget {
     super.key,
     this.template,
     this.asGlobal = false,
+    this.importPath,
   });
 
   final ClinicFormTemplate? template;
   final bool asGlobal;
+  final String? importPath;
 
   bool get isEditing => template != null;
   bool get isGlobal => asGlobal || (template?.isGlobal ?? false);
@@ -40,6 +44,7 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
   bool _busy = false;
   bool _dirty = false;
   bool _active = true;
+  String? _categoryId;
   String? _pendingSourcePath;
   String? _pendingSourceName;
   FormSourceKind? _pendingSourceKind;
@@ -57,12 +62,19 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
     _description = TextEditingController(text: widget.template?.description ?? '');
     _fields = [...?widget.template?.fields];
     _active = widget.template?.active ?? true;
+    _categoryId = widget.template?.categoryId;
     _sourceFileUrl = widget.template?.sourceFileUrl;
     _sourceFileName = widget.template?.sourceFileName;
     _sourceFileKind = widget.template?.sourceFileKind;
     _name.addListener(_markDirty);
     _description.addListener(_markDirty);
     _initialSnapshot = _snapshot();
+    final importPath = widget.importPath;
+    if (importPath != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _importFromPath(importPath, confirm: false);
+      });
+    }
   }
 
   @override
@@ -82,7 +94,8 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
       _name.text,
       _description.text,
       _active,
-      _fields.map((f) => '${f.id}|${f.label}|${f.type.name}|${f.required}|${f.options.join(',')}').join(';'),
+      _categoryId ?? '',
+      _fields.map((f) => '${f.id}|${f.label}|${f.type.name}|${f.required}|${f.options.map((o) => '${o.id}:${o.label}:${o.extraType?.name ?? ''}:${o.isOther}').join(',')}').join(';'),
       _pendingSourcePath ?? '',
       _sourceFileUrl ?? '',
     ].join('::');
@@ -111,23 +124,15 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
   Future<void> _pickSourceFile() async {
     final result = await FilePicker.pickFiles(
       type: FileType.custom,
-      allowedExtensions: const ['pdf', 'doc', 'docx', 'nuansform', 'json'],
+      allowedExtensions: const ['pdf', 'doc', 'docx', 'nuans', 'nuansform', 'json', 'zip'],
     );
     if (result == null || result.files.isEmpty) return;
     final file = result.files.single;
     final path = file.path;
     if (path == null) return;
     final ext = file.extension?.toLowerCase();
-    if (ext == 'nuansform' || ext == 'json' || FormPack.looksLikePack(file.name)) {
-      try {
-        final pack = await FormPack.importFile(File(path));
-        await _applyImportedPack(pack);
-      } catch (error) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Form aktarılamadı: $error')),
-        );
-      }
+    if (ext == 'nuans' || ext == 'nuansform' || ext == 'json' || ext == 'zip' || FormPack.looksLikePack(file.name)) {
+      await _importFromPath(path, confirm: true);
       return;
     }
     setState(() {
@@ -138,8 +143,20 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
     });
   }
 
-  Future<void> _applyImportedPack(ImportedFormPack pack) async {
-    if (_fields.isNotEmpty || _name.text.trim().isNotEmpty) {
+  Future<void> _importFromPath(String path, {required bool confirm}) async {
+    try {
+      final pack = await FormPack.importFile(File(path));
+      await _applyImportedPack(pack, confirm: confirm);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Form aktarılamadı: $error')),
+      );
+    }
+  }
+
+  Future<void> _applyImportedPack(ImportedFormPack pack, {bool confirm = true}) async {
+    if (confirm && (_fields.isNotEmpty || _name.text.trim().isNotEmpty)) {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -188,6 +205,10 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
         clinic: _clinic,
         localSourcePath: _pendingSourcePath,
       );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('WhatsApp’ta dosyaya basıp Nüans ile aç. İndirmene gerek yok.')),
+      );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -208,12 +229,13 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
     });
   }
 
-  Future<void> _openFieldEditor([ClinicFormField? existing]) async {
+  Future<void> _openFieldEditor([ClinicFormField? existing, FormFieldType? initialType]) async {
     final result = await Navigator.of(context).push<ClinicFormField>(
       MaterialPageRoute(
         builder: (_) => FormFieldEditorScreen(
           field: existing,
           newFieldId: _newFieldId(),
+          initialType: initialType,
         ),
       ),
     );
@@ -224,6 +246,15 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
         _fields[index] = result;
       } else {
         _fields.add(result);
+        if (result.type.isSection) {
+          _fields.add(
+            ClinicFormField(
+              id: _newFieldId(),
+              label: 'Bölüm kapanışı',
+              type: FormFieldType.sectionEnd,
+            ),
+          );
+        }
       }
       _dirty = true;
     });
@@ -234,12 +265,21 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
       _fields.add(
         ClinicFormField(
           id: _newFieldId(),
-          label: '${field.label} (kopya)',
+          label: field.type.isSectionEnd ? 'Bölüm kapanışı' : '${field.label} (kopya)',
           type: field.type,
           required: field.required,
           options: [...field.options],
         ),
       );
+      if (field.type.isSection) {
+        _fields.add(
+          ClinicFormField(
+            id: _newFieldId(),
+            label: 'Bölüm kapanışı',
+            type: FormFieldType.sectionEnd,
+          ),
+        );
+      }
       _dirty = true;
     });
   }
@@ -254,7 +294,19 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
     });
   }
 
-  void _removeField(int index) {
+  void _removeField(int index) async {
+    final field = _fields[index];
+    final ok = await confirmTwice(
+      context: context,
+      title: field.type.isSectionEnd
+          ? 'Bölüm kapanışını sil'
+          : field.type.isSection
+              ? 'Bölüm açılışını sil'
+              : 'Alanı sil',
+      firstBody: '"${field.label}" formdan kaldırılsın mı?',
+      secondBody: 'Bu işlem geri alınamaz. Silmek istediğinize emin misiniz?',
+    );
+    if (!ok || !mounted) return;
     setState(() {
       _fields.removeAt(index);
       _dirty = true;
@@ -265,6 +317,13 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
     if (_name.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Form adı gerekli.')),
+      );
+      _tabs.animateTo(0);
+      return;
+    }
+    if (_categoryId == null || _categoryId!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Form kategorisi seçilmeli.')),
       );
       _tabs.animateTo(0);
       return;
@@ -285,6 +344,13 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
         _tabs.animateTo(1);
         return;
       }
+      if (field.type.isTable && field.options.length < 2) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('"${field.label}" tablosunda en az iki sütun olmalı.')),
+        );
+        _tabs.animateTo(1);
+        return;
+      }
     }
 
     setState(() => _busy = true);
@@ -294,6 +360,7 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
         id: widget.template?.id ?? '',
         name: _name.text.trim(),
         description: _description.text.trim().isEmpty ? null : _description.text.trim(),
+        categoryId: _categoryId,
         fields: _fields,
         active: _active,
         sourceFileUrl: _sourceFileUrl,
@@ -359,6 +426,7 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
         id: widget.template?.id ?? 'preview',
         name: _name.text.trim().isEmpty ? 'Form adı' : _name.text.trim(),
         description: _description.text.trim().isEmpty ? null : _description.text.trim(),
+        categoryId: _categoryId,
         fields: _fields,
         active: _active,
         sourceFileUrl: _sourceFileUrl,
@@ -388,10 +456,17 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
           ),
           bottom: TabBar(
             controller: _tabs,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            indicatorColor: Colors.white,
+            dividerColor: Colors.transparent,
+            overlayColor: const WidgetStatePropertyAll(Colors.white24),
+            labelStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
+            unselectedLabelStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white70),
             tabs: const [
-              Tab(text: 'Genel'),
-              Tab(text: 'Alanlar'),
-              Tab(text: 'Önizleme'),
+              Tab(child: Text('Genel', style: TextStyle(color: Colors.white))),
+              Tab(child: Text('Alanlar', style: TextStyle(color: Colors.white))),
+              Tab(child: Text('Önizleme', style: TextStyle(color: Colors.white))),
             ],
           ),
           actions: [
@@ -425,6 +500,11 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
             _GeneralTab(
               name: _name,
               description: _description,
+              categoryId: _categoryId,
+              onCategoryChanged: (value) => setState(() {
+                _categoryId = value;
+                _dirty = true;
+              }),
               active: _active,
               busy: _busy,
               pendingSourceName: _pendingSourceName,
@@ -453,7 +533,12 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
             _FieldsTab(
               fields: _fields,
               onAdd: () => _openFieldEditor(),
-              onEdit: _openFieldEditor,
+              onAddSection: () => _openFieldEditor(null, FormFieldType.section),
+              onAddTable: () => _openFieldEditor(null, FormFieldType.table),
+              onEdit: (field) {
+                if (field.type.isSectionEnd) return;
+                _openFieldEditor(field);
+              },
               onDuplicate: _duplicateField,
               onRemove: _removeField,
               onMove: _moveField,
@@ -471,10 +556,31 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
           ],
         ),
         floatingActionButton: _tabs.index == 1
-            ? FloatingActionButton.extended(
-                onPressed: () => _openFieldEditor(),
-                icon: const Icon(Icons.add),
-                label: const Text('Alan ekle'),
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  FloatingActionButton.extended(
+                    heroTag: 'add-table',
+                    onPressed: () => _openFieldEditor(null, FormFieldType.table),
+                    icon: const Icon(Icons.table_chart_outlined),
+                    label: const Text('Tablo'),
+                  ),
+                  const SizedBox(height: 10),
+                  FloatingActionButton.extended(
+                    heroTag: 'add-section',
+                    onPressed: () => _openFieldEditor(null, FormFieldType.section),
+                    icon: const Icon(Icons.web_asset_outlined),
+                    label: const Text('Bölüm'),
+                  ),
+                  const SizedBox(height: 10),
+                  FloatingActionButton.extended(
+                    heroTag: 'add-field',
+                    onPressed: () => _openFieldEditor(),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Alan ekle'),
+                  ),
+                ],
               )
             : null,
       ),
@@ -486,6 +592,8 @@ class _GeneralTab extends StatelessWidget {
   const _GeneralTab({
     required this.name,
     required this.description,
+    required this.categoryId,
+    required this.onCategoryChanged,
     required this.active,
     required this.busy,
     required this.pendingSourceName,
@@ -504,6 +612,8 @@ class _GeneralTab extends StatelessWidget {
 
   final TextEditingController name;
   final TextEditingController description;
+  final String? categoryId;
+  final ValueChanged<String?> onCategoryChanged;
   final bool active;
   final bool busy;
   final String? pendingSourceName;
@@ -533,6 +643,40 @@ class _GeneralTab extends StatelessWidget {
             hintText: 'Örn. Anamnez formu',
           ),
         ),
+        const SizedBox(height: 12),
+        StreamBuilder<List<FormCategory>>(
+          stream: ClinicService().watchFormCategories(),
+          builder: (context, snapshot) {
+            final categories = snapshot.data ?? const <FormCategory>[];
+            final selected = categoryId == null
+                ? null
+                : categories.where((item) => item.id == categoryId).firstOrNull;
+            return DropdownButtonFormField<String?>(
+              value: selected?.id,
+              decoration: const InputDecoration(
+                labelText: 'Form kategorisi',
+                hintText: 'Zorunlu',
+              ),
+              items: categories
+                  .map(
+                    (item) => DropdownMenuItem(
+                      value: item.id,
+                      child: Text(item.name),
+                    ),
+                  )
+                  .toList(),
+              onChanged: categories.isEmpty ? null : onCategoryChanged,
+            );
+          },
+        ),
+        if (categoryId == null)
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text(
+              'Her form bir kategoriye bağlı olmalıdır.',
+              style: TextStyle(color: AppColors.muted, fontSize: 13),
+            ),
+          ),
         const SizedBox(height: 12),
         TextField(
           controller: description,
@@ -584,7 +728,7 @@ class _GeneralTab extends StatelessWidget {
         const Text('Dosya', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
         const SizedBox(height: 8),
         const Text(
-          'Arkadaşınızın gönderdiği Nüans form dosyasını (.nuansform) seçerek formu içeri aktarın. Klinikte kullandığınız kağıt formun PDF/Word kopyasını da ekleyebilirsiniz.',
+          'Arkadaşınızın gönderdiği .nuans dosyasını seçerek formu içeri aktarın. Klinikte kullandığınız kağıt formun PDF/Word kopyasını da ekleyebilirsiniz.',
           style: TextStyle(color: AppColors.muted, height: 1.4),
         ),
         const SizedBox(height: 12),
@@ -651,6 +795,8 @@ class _FieldsTab extends StatelessWidget {
   const _FieldsTab({
     required this.fields,
     required this.onAdd,
+    required this.onAddSection,
+    required this.onAddTable,
     required this.onEdit,
     required this.onDuplicate,
     required this.onRemove,
@@ -660,6 +806,8 @@ class _FieldsTab extends StatelessWidget {
 
   final List<ClinicFormField> fields;
   final VoidCallback onAdd;
+  final VoidCallback onAddSection;
+  final VoidCallback onAddTable;
   final void Function(ClinicFormField field) onEdit;
   final void Function(ClinicFormField field) onDuplicate;
   final void Function(int index) onRemove;
@@ -678,44 +826,85 @@ class _FieldsTab extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Kısa metin, tarih, evet/hayır veya çoktan seçmeli alanlar ekleyin. Sıralamayı sürükleyerek değiştirebilirsiniz.',
+            'Alan ekleyin veya bölümle gruplayın. Bölüm açılışı ile kapanışı arasına koyduğun alanlar kutunun içinde kalır.',
             style: TextStyle(color: AppColors.muted, height: 1.4),
           ),
           const SizedBox(height: 24),
           FilledButton.icon(onPressed: onAdd, icon: const Icon(Icons.add), label: const Text('İlk alanı ekle')),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(onPressed: onAddSection, icon: const Icon(Icons.web_asset_outlined), label: const Text('Bölüm ekle')),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(onPressed: onAddTable, icon: const Icon(Icons.table_chart_outlined), label: const Text('Tablo ekle')),
         ],
       );
     }
 
     return ReorderableListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 160),
       itemCount: fields.length,
       onReorder: onReorder,
       itemBuilder: (context, index) {
         final field = fields[index];
-        final optionWarning = field.type.hasOptions && field.options.length < 2;
+        final optionWarning = (field.type.hasOptions || field.type.isTable) && field.options.length < 2;
+        var depth = 0;
+        for (var i = 0; i < index; i++) {
+          if (fields[i].type.isSection) {
+            depth++;
+          } else if (fields[i].type.isSectionEnd && depth > 0) {
+            depth--;
+          }
+        }
+        final shownLabel = field.type.isSectionEnd
+            ? 'Bölüm kapanışı'
+            : field.type.isSection
+                ? 'Açılış: ${field.label}'
+                : field.label;
         return Card(
           key: ValueKey(field.id),
-          margin: const EdgeInsets.only(bottom: 10),
+          margin: EdgeInsets.only(bottom: 10, left: 16.0 * depth),
           child: Column(
             children: [
-              ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: AppColors.chip,
-                  child: Icon(field.type.icon, color: AppColors.primary, size: 20),
-                ),
-                title: Text(field.label, style: const TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: Text(
-                  [
-                    field.type.label,
-                    if (field.required) 'zorunlu',
-                    if (field.type.hasOptions) '${field.options.length} seçenek',
-                    if (optionWarning) 'seçenek eksik',
-                  ].join(' · '),
-                  style: TextStyle(color: optionWarning ? AppColors.danger : AppColors.muted),
-                ),
-                trailing: const Icon(Icons.drag_handle),
+              InkWell(
                 onTap: () => onEdit(field),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: AppColors.chip,
+                        child: Icon(field.type.icon, color: AppColors.primary, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              shownLabel,
+                              softWrap: true,
+                              style: const TextStyle(fontWeight: FontWeight.w600, height: 1.3),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              [
+                                field.type.label,
+                                if (field.required && field.type.isInput) 'zorunlu',
+                                if (field.type.hasOptions) '${field.options.length} seçenek',
+                                if (field.type.isTable) '${field.options.length} sütun',
+                                if (field.type.hasOptions && field.options.any((item) => item.hasExtra)) 'ek alanlı',
+                                if (optionWarning) 'seçenek eksik',
+                              ].join(' · '),
+                              softWrap: true,
+                              style: TextStyle(color: optionWarning ? AppColors.danger : AppColors.muted, height: 1.3),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.drag_handle),
+                    ],
+                  ),
+                ),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
@@ -733,7 +922,7 @@ class _FieldsTab extends StatelessWidget {
                     ),
                     IconButton(
                       tooltip: 'Düzenle',
-                      onPressed: () => onEdit(field),
+                      onPressed: field.type.isSectionEnd ? null : () => onEdit(field),
                       icon: const Icon(Icons.edit_outlined),
                     ),
                     IconButton(

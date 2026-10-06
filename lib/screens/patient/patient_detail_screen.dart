@@ -7,6 +7,8 @@ import '../../models/note.dart';
 import '../../models/patient.dart';
 import '../../services/clinic_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/confirm_twice.dart';
+import '../../utils/form_pack.dart';
 import '../../widgets/appointment_calendar.dart';
 import '../calendar/appointment_form_screen.dart';
 import '../form/form_entry_detail_screen.dart';
@@ -98,6 +100,55 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
     );
     if (confirmed == true) {
       await _clinic.deleteAppointment(appointment.id);
+    }
+  }
+
+  Future<void> _deletePatientForm(PatientFormEntry entry) async {
+    final ok = await confirmTwice(
+      context: context,
+      title: 'Formu sil',
+      firstBody: '"${entry.title}" bu hastadan kaldırılsın mı?',
+      secondBody: 'Dolu form kaydı silinecek. Emin misiniz?',
+    );
+    if (!ok || !mounted) return;
+    await _clinic.deletePatientForm(_patient.id, entry.id);
+  }
+
+  Future<void> _shareFilledForm(PatientFormEntry entry) async {
+    try {
+      ClinicFormTemplate? template;
+      if (entry.templateId != null && entry.templateId!.isNotEmpty) {
+        final templates = await _clinic.watchFormTemplates().first;
+        template = templates.where((item) => item.id == entry.templateId).firstOrNull;
+      }
+      final packTemplate = (template ??
+              ClinicFormTemplate(
+                id: '',
+                name: entry.title,
+                fields: const [],
+                createdAt: DateTime.now(),
+                updatedAt: DateTime.now(),
+              ))
+          .copyWith(name: entry.title);
+      await FormPack.share(
+        template: packTemplate,
+        clinic: _clinic,
+        entry: entry,
+        patient: _patient,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${FormPack.packFileName(entry.title, filled: true)} WhatsApp belgesi olarak gönderildi.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Dolu form paylaşılamadı: $error')),
+      );
     }
   }
 
@@ -258,10 +309,21 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
                                 subtitle: Text(
                                   '${entry.source.label} · ${DateFormat('d MMM yyyy HH:mm', 'tr_TR').format(entry.createdAt)}',
                                 ),
-                                trailing: IconButton(
-                                  tooltip: 'Sil',
-                                  onPressed: () => _clinic.deletePatientForm(_patient.id, entry.id),
-                                  icon: const Icon(Icons.delete_outline, color: AppColors.danger),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (entry.source == PatientFormSource.filled)
+                                      IconButton(
+                                        tooltip: 'Dolu formu paylaş',
+                                        onPressed: () => _shareFilledForm(entry),
+                                        icon: const Icon(Icons.ios_share_outlined),
+                                      ),
+                                    IconButton(
+                                      tooltip: 'Sil',
+                                      onPressed: () => _deletePatientForm(entry),
+                                      icon: const Icon(Icons.delete_outline, color: AppColors.danger),
+                                    ),
+                                  ],
                                 ),
                                 onTap: () {
                                   Navigator.of(context).push(

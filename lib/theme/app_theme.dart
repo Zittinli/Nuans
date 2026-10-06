@@ -36,6 +36,15 @@ class AppTheme {
         elevation: 0,
         centerTitle: false,
       ),
+      tabBarTheme: const TabBarThemeData(
+        labelColor: Colors.white,
+        unselectedLabelColor: Color(0xCCFFFFFF),
+        indicatorColor: Colors.white,
+        indicatorSize: TabBarIndicatorSize.tab,
+        dividerColor: Colors.transparent,
+        labelStyle: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white),
+        unselectedLabelStyle: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xCCFFFFFF)),
+      ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,

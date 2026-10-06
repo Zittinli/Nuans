@@ -9,20 +9,38 @@ class FormFieldEditorScreen extends StatefulWidget {
     super.key,
     this.field,
     required this.newFieldId,
+    this.initialType,
   });
 
   final ClinicFormField? field;
   final String newFieldId;
+  final FormFieldType? initialType;
 
   @override
   State<FormFieldEditorScreen> createState() => _FormFieldEditorScreenState();
+}
+
+class _OptionDraft {
+  _OptionDraft({
+    required this.id,
+    String label = '',
+    this.isOther = false,
+    this.extraType,
+  }) : label = TextEditingController(text: label);
+
+  final String id;
+  final TextEditingController label;
+  bool isOther;
+  FormFieldType? extraType;
+
+  void dispose() => label.dispose();
 }
 
 class _FormFieldEditorScreenState extends State<FormFieldEditorScreen> {
   late final TextEditingController _label;
   late FormFieldType _type;
   late bool _required;
-  late List<TextEditingController> _optionControllers;
+  late List<_OptionDraft> _options;
 
   bool get _isEditing => widget.field != null;
 
@@ -30,42 +48,69 @@ class _FormFieldEditorScreenState extends State<FormFieldEditorScreen> {
   void initState() {
     super.initState();
     _label = TextEditingController(text: widget.field?.label ?? '');
-    _type = widget.field?.type ?? FormFieldType.text;
+    _type = widget.field?.type ?? widget.initialType ?? FormFieldType.text;
     _required = widget.field?.required ?? false;
-    final options = widget.field?.options ?? const <String>[];
-    _optionControllers = options.isEmpty
-        ? [TextEditingController()]
-        : options.map((option) => TextEditingController(text: option)).toList();
+    final existing = widget.field?.options ?? const <FormFieldOption>[];
+    _options = existing.isEmpty
+        ? [_OptionDraft(id: _newOptionId())]
+        : existing
+            .map(
+              (option) => _OptionDraft(
+                id: option.id,
+                label: option.label,
+                isOther: option.isOther,
+                extraType: option.extraType,
+              ),
+            )
+            .toList();
   }
 
   @override
   void dispose() {
     _label.dispose();
-    for (final controller in _optionControllers) {
-      controller.dispose();
+    for (final option in _options) {
+      option.dispose();
     }
     super.dispose();
   }
 
-  List<String> _readOptions() {
-    return _optionControllers
-        .map((c) => c.text.trim())
-        .where((item) => item.isNotEmpty)
+  String _newOptionId() => 'opt_${DateTime.now().microsecondsSinceEpoch}';
+
+  List<FormFieldOption> _readOptions() {
+    return _options
+        .map(
+          (item) => FormFieldOption(
+            id: item.id,
+            label: item.label.text.trim(),
+            isOther: _type.isTable ? false : item.isOther,
+            extraType: _type.isTable
+                ? (item.extraType ?? FormFieldType.text)
+                : item.isOther
+                    ? (item.extraType ?? FormFieldType.text)
+                    : item.extraType,
+          ),
+        )
+        .where((item) => item.label.isNotEmpty)
         .toList();
   }
 
   void _addOption() {
-    setState(() => _optionControllers.add(TextEditingController()));
+    setState(() => _options.add(_OptionDraft(
+          id: _newOptionId(),
+          extraType: _type.isTable ? FormFieldType.text : null,
+        )));
   }
 
   void _removeOption(int index) {
-    if (_optionControllers.length <= 1) {
-      _optionControllers.first.clear();
+    if (_options.length <= 1) {
+      _options.first.label.clear();
+      _options.first.isOther = false;
+      _options.first.extraType = null;
       setState(() {});
       return;
     }
     setState(() {
-      _optionControllers.removeAt(index).dispose();
+      _options.removeAt(index).dispose();
     });
   }
 
@@ -73,7 +118,7 @@ class _FormFieldEditorScreenState extends State<FormFieldEditorScreen> {
     final label = _label.text.trim();
     if (label.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Alan başlığı gerekli.')),
+        SnackBar(content: Text(_type.isSection ? 'Bölüm başlığı gerekli.' : 'Alan başlığı gerekli.')),
       );
       return;
     }
@@ -84,14 +129,20 @@ class _FormFieldEditorScreenState extends State<FormFieldEditorScreen> {
       );
       return;
     }
+    if (_type.isTable && options.length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tablo için en az iki sütun girin.')),
+      );
+      return;
+    }
     Navigator.pop(
       context,
       ClinicFormField(
         id: widget.field?.id ?? widget.newFieldId,
         label: label,
         type: _type,
-        required: _required,
-        options: _type.hasOptions ? options : const [],
+        required: _type.isSection ? false : _required,
+        options: (_type.hasOptions || _type.isTable) ? options : const [],
       ),
     );
   }
@@ -100,7 +151,11 @@ class _FormFieldEditorScreenState extends State<FormFieldEditorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEditing ? 'Alanı düzenle' : 'Yeni alan'),
+        title: Text(
+          _isEditing
+              ? (_type.isTable ? 'Tabloyu düzenle' : _type.isSection ? 'Bölümü düzenle' : 'Alanı düzenle')
+              : (_type.isTable ? 'Yeni tablo' : _type.isSection ? 'Yeni bölüm' : 'Yeni alan'),
+        ),
         actions: [
           TextButton(
             onPressed: _save,
@@ -115,15 +170,15 @@ class _FormFieldEditorScreenState extends State<FormFieldEditorScreen> {
             controller: _label,
             textCapitalization: TextCapitalization.sentences,
             autofocus: !_isEditing,
-            decoration: const InputDecoration(
-              labelText: 'Alan başlığı',
-              hintText: 'Örn. Başvuru şikayeti',
+            decoration: InputDecoration(
+              labelText: _type.isTable ? 'Tablo başlığı' : _type.isSection ? 'Bölüm başlığı' : 'Alan başlığı',
+              hintText: _type.isTable ? 'Örn. Kullandığı ilaçlar' : _type.isSection ? 'Örn. Özgeçmiş' : 'Örn. Başvuru şikayeti',
             ),
           ),
           const SizedBox(height: 20),
           const Text('Alan türü', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
           const SizedBox(height: 10),
-          ...FormFieldType.values.map((type) {
+          ...FormFieldType.values.where((type) => !type.isSectionEnd).map((type) {
             final selected = _type == type;
             return Padding(
               padding: const EdgeInsets.only(bottom: 8),
@@ -134,11 +189,19 @@ class _FormFieldEditorScreenState extends State<FormFieldEditorScreen> {
                   borderRadius: BorderRadius.circular(12),
                   onTap: () => setState(() {
                     _type = type;
-                    if (!type.hasOptions && _optionControllers.length > 1) {
-                      for (var i = 1; i < _optionControllers.length; i++) {
-                        _optionControllers[i].dispose();
+                    if (type.isTable) {
+                      while (_options.length < 2) {
+                        _options.add(_OptionDraft(id: _newOptionId(), extraType: FormFieldType.text));
                       }
-                      _optionControllers = [_optionControllers.first];
+                      for (final option in _options) {
+                        option.isOther = false;
+                        option.extraType ??= FormFieldType.text;
+                      }
+                    } else if (!type.hasOptions && _options.length > 1) {
+                      for (var i = 1; i < _options.length; i++) {
+                        _options[i].dispose();
+                      }
+                      _options = [_options.first];
                     }
                   }),
                   child: Container(
@@ -165,59 +228,121 @@ class _FormFieldEditorScreenState extends State<FormFieldEditorScreen> {
               ),
             );
           }),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Zorunlu alan'),
-            subtitle: const Text('Form doldurulurken boş bırakılamaz'),
-            value: _required,
-            onChanged: (value) => setState(() => _required = value),
-          ),
-          if (_type.hasOptions) ...[
+          if (_type.isSection) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Kaydedince hemen altına bir kapanış eklenir. Yalnızca açılış ile kapanış arasına taşıdığın alanlar bu bölümün içinde görünür.',
+              style: TextStyle(color: AppColors.muted, height: 1.4),
+            ),
+          ] else
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Zorunlu alan'),
+              subtitle: const Text('Form doldurulurken boş bırakılamaz'),
+              value: _required,
+              onChanged: (value) => setState(() => _required = value),
+            ),
+          if (_type.hasOptions || _type.isTable) ...[
             const SizedBox(height: 8),
             Row(
               children: [
-                const Expanded(
-                  child: Text('Seçenekler', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                Expanded(
+                  child: Text(
+                    _type.isTable ? 'Sütunlar' : 'Seçenekler',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
                 ),
                 TextButton.icon(
                   onPressed: _addOption,
                   icon: const Icon(Icons.add),
-                  label: const Text('Seçenek ekle'),
+                  label: Text(_type.isTable ? 'Sütun ekle' : 'Seçenek ekle'),
                 ),
               ],
             ),
             const SizedBox(height: 4),
-            const Text(
-              'Her satır hasta formunda ayrı bir seçenek olarak görünür.',
-              style: TextStyle(color: AppColors.muted, height: 1.35),
+            Text(
+              _type.isTable
+                  ? 'Her satır bir sütun başlığıdır. Hücre türünü metin, sayı, tarih veya evet/hayır olarak seçebilirsin.'
+                  : 'Her seçenek ayrı durur. “Diğer” işaretlersen o satıra istediğin alan türünü bağlayabilirsin (sayı, metin, tarih…).',
+              style: const TextStyle(color: AppColors.muted, height: 1.35),
             ),
             const SizedBox(height: 12),
-            ...List.generate(_optionControllers.length, (index) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _optionControllers[index],
-                        textCapitalization: TextCapitalization.sentences,
-                        decoration: InputDecoration(
-                          labelText: 'Seçenek ${index + 1}',
-                        ),
+            ...List.generate(_options.length, (index) {
+              final option = _options[index];
+              return Card(
+                margin: const EdgeInsets.only(bottom: 10),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 4, 12),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: option.label,
+                              textCapitalization: TextCapitalization.sentences,
+                              decoration: InputDecoration(
+                                labelText: _type.isTable ? 'Sütun ${index + 1}' : 'Seçenek ${index + 1}',
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Seçeneği sil',
+                            onPressed: () => _removeOption(index),
+                            icon: const Icon(Icons.remove_circle_outline, color: AppColors.danger),
+                          ),
+                        ],
                       ),
-                    ),
-                    IconButton(
-                      tooltip: 'Seçeneği sil',
-                      onPressed: () => _removeOption(index),
-                      icon: const Icon(Icons.remove_circle_outline, color: AppColors.danger),
-                    ),
-                  ],
+                      if (!_type.isTable)
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                          title: const Text('Diğer'),
+                          subtitle: const Text('Seçilince ek alan açılır'),
+                          value: option.isOther,
+                          onChanged: (value) => setState(() {
+                            option.isOther = value;
+                            if (value && option.extraType == null) {
+                              option.extraType = FormFieldType.text;
+                            }
+                          }),
+                        ),
+                      DropdownButtonFormField<FormFieldType?>(
+                        value: _type.isTable ? (option.extraType ?? FormFieldType.text) : option.extraType,
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          labelText: _type.isTable ? 'Hücre türü' : 'Bu seçeneğin alan türü',
+                        ),
+                        items: [
+                          if (!_type.isTable)
+                            const DropdownMenuItem<FormFieldType?>(
+                              value: null,
+                              child: Text('Yalnızca seçim (ek alan yok)'),
+                            ),
+                          ...(_type.isTable ? FormFieldType.columnTypes : FormFieldType.extraChoices).map(
+                            (type) => DropdownMenuItem<FormFieldType?>(
+                              value: type,
+                              child: Text(type.label),
+                            ),
+                          ),
+                        ],
+                        onChanged: (value) => setState(() => option.extraType = value),
+                      ),
+                    ],
+                  ),
                 ),
               );
             }),
           ],
           const SizedBox(height: 24),
-          FilledButton(onPressed: _save, child: Text(_isEditing ? 'Alanı güncelle' : 'Alanı ekle')),
+          FilledButton(
+            onPressed: _save,
+            child: Text(
+              _isEditing
+                  ? (_type.isTable ? 'Tabloyu güncelle' : _type.isSection ? 'Bölümü güncelle' : 'Alanı güncelle')
+                  : (_type.isTable ? 'Tabloyu ekle' : _type.isSection ? 'Bölümü ekle' : 'Alanı ekle'),
+            ),
+          ),
         ],
       ),
     );

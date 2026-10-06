@@ -10,7 +10,10 @@ import '../../models/patient.dart';
 import '../../services/admin_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../form/form_categories_screen.dart';
+import '../form/form_entry_detail_screen.dart';
 import '../form/form_template_editor_screen.dart';
+import '../../utils/confirm_twice.dart';
 import '../../utils/form_pack.dart';
 import '../../services/clinic_service.dart';
 
@@ -40,6 +43,7 @@ class AdminHomeScreen extends StatelessWidget {
 
         final tabs = <Tab>[
           if (actor.canViewAllAccounts || actor.canManagePermissions) const Tab(text: 'Hesaplar'),
+          if (actor.canManageFormCategories) const Tab(text: 'Form kategorileri'),
           if (actor.canManageDefaultForms) const Tab(text: 'Varsayılan formlar'),
         ];
 
@@ -61,6 +65,7 @@ class AdminHomeScreen extends StatelessWidget {
               children: [
                 if (actor.canViewAllAccounts || actor.canManagePermissions)
                   _AccountsTab(actor: actor),
+                if (actor.canManageFormCategories) const FormCategoriesScreen(embedded: true),
                 if (actor.canManageDefaultForms) const _DefaultFormsTab(),
               ],
             ),
@@ -257,27 +262,15 @@ class _DefaultFormsTab extends StatelessWidget {
                       alignment: Alignment.centerRight,
                       child: TextButton.icon(
                         onPressed: () async {
-                          final confirmed = await showDialog<bool>(
+                          final ok = await confirmTwice(
                             context: context,
-                            builder: (context) => AlertDialog(
-                              title: const Text('Varsayılan formu kaldır'),
-                              content: Text(
-                                '"${template.name}" tüm hesapların form listesinden kaldırılsın mı?',
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context, false),
-                                  child: const Text('Vazgeç'),
-                                ),
-                                FilledButton(
-                                  onPressed: () => Navigator.pop(context, true),
-                                  style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
-                                  child: const Text('Kaldır'),
-                                ),
-                              ],
-                            ),
+                            title: 'Varsayılan formu kaldır',
+                            firstBody: '"${template.name}" tüm hesapların form listesinden kaldırılsın mı?',
+                            secondBody: 'Bu varsayılan form tüm hesaplardan kalkacak. Emin misiniz?',
+                            confirmLabel: 'Kaldır',
+                            finalLabel: 'Evet, kaldır',
                           );
-                          if (confirmed == true) {
+                          if (ok) {
                             await clinic.deleteFormTemplate(template);
                           }
                         },
@@ -489,6 +482,7 @@ class _AccountPatients extends StatelessWidget {
                         [
                           if (patient.diagnosis?.isNotEmpty == true) patient.diagnosis!,
                           DateFormat('d MMM yyyy', 'tr_TR').format(patient.updatedAt),
+                          'Notlar ve doldurulan formlar',
                         ].join(' · '),
                       ),
                       trailing: const Icon(Icons.chevron_right),
@@ -583,47 +577,111 @@ class AdminPatientInspectScreen extends StatelessWidget {
             },
           ),
           const SizedBox(height: 20),
-          const Text('Formlar', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          const Text('Doldurulan formlar', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
-          StreamBuilder<List<PatientFormEntry>>(
-            stream: admin.watchPatientForms(account.id, patient.id),
-            builder: (context, snapshot) {
-              if (snapshot.hasError) return Text('Formlar yüklenemedi: ${snapshot.error}');
-              if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-              final forms = snapshot.data!;
-              if (forms.isEmpty) {
-                return const Card(child: ListTile(title: Text('Form yok.')));
-              }
-              return Column(
-                children: forms
-                    .map(
-                      (entry) => Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Card(
-                          child: ListTile(
-                            title: Text(entry.title),
-                            subtitle: Text(
-                              [
-                                entry.source.label,
-                                DateFormat('d MMM yyyy HH:mm', 'tr_TR').format(entry.createdAt),
-                                if (entry.values.isNotEmpty)
-                                  entry.values.entries
-                                      .where((item) => '${item.value}'.trim().isNotEmpty)
-                                      .map((item) => '${item.value}')
-                                      .join(' · '),
-                              ].join('\n'),
+          _AccountPatientFilledForms(account: account, patient: patient),
+        ],
+      ),
+    );
+  }
+}
+
+class _AccountPatientFilledForms extends StatelessWidget {
+  const _AccountPatientFilledForms({
+    required this.account,
+    required this.patient,
+  });
+
+  final Doctor account;
+  final Patient patient;
+
+  @override
+  Widget build(BuildContext context) {
+    final admin = AdminService();
+    return StreamBuilder<List<ClinicFormTemplate>>(
+      stream: admin.watchFormTemplates(account.id),
+      builder: (context, personalSnap) {
+        return StreamBuilder<List<ClinicFormTemplate>>(
+          stream: ClinicService().watchGlobalFormTemplates(),
+          builder: (context, globalSnap) {
+            return StreamBuilder<List<PatientFormEntry>>(
+              stream: admin.watchPatientForms(account.id, patient.id),
+              builder: (context, formsSnap) {
+                if (formsSnap.hasError) {
+                  return Text('Formlar yüklenemedi: ${formsSnap.error}');
+                }
+                if (!formsSnap.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final templates = <ClinicFormTemplate>[
+                  ...?globalSnap.data,
+                  ...?personalSnap.data,
+                ];
+                final forms = formsSnap.data!;
+                if (forms.isEmpty) {
+                  return const Card(
+                    child: ListTile(title: Text('Bu hasta için doldurulmuş form yok.')),
+                  );
+                }
+                return Column(
+                  children: forms.map((entry) {
+                    final template =
+                        templates.where((item) => item.id == entry.templateId).firstOrNull;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Card(
+                        child: InkWell(
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => FormEntryDetailScreen(
+                                  patient: patient,
+                                  entry: entry,
+                                  templates: templates,
+                                  readOnly: true,
+                                ),
+                              ),
+                            );
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        entry.title,
+                                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                                      ),
+                                    ),
+                                    const Icon(Icons.chevron_right),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  [
+                                    entry.source.label,
+                                    DateFormat('d MMM yyyy HH:mm', 'tr_TR').format(entry.createdAt),
+                                  ].join(' · '),
+                                  style: const TextStyle(color: AppColors.muted, fontSize: 12),
+                                ),
+                                const SizedBox(height: 12),
+                                ...filledFormRows(entry, template),
+                              ],
                             ),
-                            isThreeLine: true,
                           ),
                         ),
                       ),
-                    )
-                    .toList(),
-              );
-            },
-          ),
-        ],
-      ),
+                    );
+                  }).toList(),
+                );
+              },
+            );
+          },
+        );
+      },
     );
   }
 }

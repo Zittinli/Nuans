@@ -47,10 +47,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }).toList();
   }
 
-  bool _canOpenAdmin(Doctor? doctor) {
-    return hasAdminAccess(user: _auth.currentUser, doctor: doctor);
-  }
-
   void _openAdmin() {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const AdminHomeScreen()),
@@ -59,7 +55,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _openProfile(Doctor? doctor) async {
     final user = _auth.currentUser;
-    final showAdmin = _canOpenAdmin(doctor);
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -82,17 +77,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 user?.email ?? '',
                 style: const TextStyle(color: AppColors.muted),
               ),
-              if (showAdmin) ...[
-                const SizedBox(height: 16),
-                FilledButton.icon(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    _openAdmin();
-                  },
-                  icon: const Icon(Icons.shield_outlined, color: AppColors.adminShield),
-                  label: const Text('Yönetim paneli'),
-                ),
-              ],
               const SizedBox(height: 16),
               OutlinedButton.icon(
                 onPressed: () {
@@ -218,28 +202,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               body: Column(
                 children: [
-                  if (showAdmin)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                      child: Card(
-                        color: AppColors.primaryDark,
-                        child: ListTile(
-                          leading: const Icon(Icons.shield_outlined, color: AppColors.adminShield, size: 32),
-                          title: const Text(
-                            'Yönetim paneli',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-                          ),
-                          subtitle: const Text(
-                            'Hesaplar, yetkiler ve varsayılan formlar',
-                            style: TextStyle(color: Colors.white70),
-                          ),
-                          trailing: const Icon(Icons.chevron_right, color: Colors.white),
-                          onTap: _openAdmin,
-                        ),
-                      ),
-                    ),
                   Padding(
-                    padding: EdgeInsets.fromLTRB(16, showAdmin ? 8 : 16, 16, 8),
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                     child: TextField(
                       controller: _search,
                       onChanged: (value) => setState(() => _query = value),

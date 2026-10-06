@@ -32,6 +32,8 @@ class Doctor {
 
   bool get canManageDefaultForms => hasPermission(AppPermission.manageDefaultForms);
 
+  bool get canManageFormCategories => hasPermission(AppPermission.manageFormCategories);
+
   factory Doctor.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
     return Doctor(

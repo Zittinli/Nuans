@@ -38,6 +38,10 @@ service cloud.firestore {
       return hasPermission('manageDefaultForms');
     }
 
+    function canManageFormCategories() {
+      return hasPermission('manageFormCategories');
+    }
+
     function isTargetSuperAdmin() {
       return resource.data.email is string
         && resource.data.email.lower() == 'zttnlnkc@gmail.com';
@@ -96,6 +100,11 @@ service cloud.firestore {
     match /globalFormTemplates/{templateId} {
       allow read: if isSignedIn();
       allow write: if canManageDefaultForms();
+    }
+
+    match /formCategories/{categoryId} {
+      allow read: if isSignedIn();
+      allow write: if canManageFormCategories();
     }
   }
 }

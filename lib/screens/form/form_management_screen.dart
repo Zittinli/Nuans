@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../models/clinic_form.dart';
 import '../../models/doctor.dart';
+import '../../models/form_category.dart';
+import '../../screens/form/form_categories_screen.dart';
 import '../../services/auth_service.dart';
 import '../../services/clinic_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/confirm_twice.dart';
 import '../../utils/form_attachment.dart';
 import '../../utils/form_pack.dart';
 import 'form_template_editor_screen.dart';
@@ -29,6 +32,7 @@ class _FormManagementScreenState extends State<FormManagementScreen> {
   void initState() {
     super.initState();
     _tab = widget.initialTab;
+    _clinic.ensureDefaultFormCategories();
   }
 
   Future<void> _openBuilder([ClinicFormTemplate? template]) async {
@@ -56,12 +60,29 @@ class _FormManagementScreenState extends State<FormManagementScreen> {
   Future<void> _export(ClinicFormTemplate template) async {
     try {
       await FormPack.share(template: template, clinic: _clinic);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('WhatsApp’ta dosyaya basıp Nüans ile aç. İndirmene gerek yok.')),
+      );
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Form dışa aktarılamadı: $error')),
       );
     }
+  }
+
+  Future<void> _deleteTemplate(ClinicFormTemplate template) async {
+    final ok = await confirmTwice(
+      context: context,
+      title: template.isGlobal ? 'Varsayılan formu kaldır' : 'Formu sil',
+      firstBody: '"${template.name}" ${template.isGlobal ? 'tüm hesapların listesinden kaldırılsın mı?' : 'kalıcı olarak silinsin mi?'}',
+      secondBody: 'Bu işlem geri alınamaz. Devam etmek istediğinize emin misiniz?',
+      confirmLabel: template.isGlobal ? 'Kaldır' : 'Sil',
+      finalLabel: template.isGlobal ? 'Evet, kaldır' : 'Evet, sil',
+    );
+    if (!ok || !mounted) return;
+    await _clinic.deleteFormTemplate(template);
   }
 
   List<ClinicFormTemplate> _filter(List<ClinicFormTemplate> templates) {
@@ -80,6 +101,18 @@ class _FormManagementScreenState extends State<FormManagementScreen> {
         return Scaffold(
           appBar: AppBar(
             title: const Text('Form yönetimi'),
+            actions: [
+              if (profileSnap.data?.canManageFormCategories == true)
+                IconButton(
+                  tooltip: 'Form kategorileri',
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const FormCategoriesScreen()),
+                    );
+                  },
+                  icon: const Icon(Icons.category_outlined),
+                ),
+            ],
             bottom: PreferredSize(
               preferredSize: const Size.fromHeight(48),
               child: Padding(
@@ -100,9 +133,15 @@ class _FormManagementScreenState extends State<FormManagementScreen> {
             icon: const Icon(Icons.post_add_outlined),
             label: const Text('Form ekle'),
           ),
-          body: StreamBuilder<List<ClinicFormTemplate>>(
-            stream: _clinic.watchFormTemplates(),
-            builder: (context, snapshot) {
+          body: StreamBuilder<List<FormCategory>>(
+            stream: _clinic.watchFormCategories(),
+            builder: (context, categorySnap) {
+              final categoryNames = {
+                for (final item in categorySnap.data ?? const <FormCategory>[]) item.id: item.name,
+              };
+              return StreamBuilder<List<ClinicFormTemplate>>(
+                stream: _clinic.watchFormTemplates(),
+                builder: (context, snapshot) {
               if (snapshot.hasError) {
                 return Center(child: Text('Formlar yüklenemedi: ${snapshot.error}'));
               }
@@ -117,7 +156,7 @@ class _FormManagementScreenState extends State<FormManagementScreen> {
                     child: Text(
                       _tab == FormManagementTab.active
                           ? 'Aktif form yok. Tüm formlar sekmesinden bir formu aktifleştirin veya yeni form ekleyin.'
-                          : 'Henüz form şablonu yok. PDF/Word veya .nuansform dosyası seçerek form ekleyin.',
+                          : 'Henüz form şablonu yok. PDF/Word veya .nuans dosyası seçerek form ekleyin.',
                       textAlign: TextAlign.center,
                       style: const TextStyle(color: AppColors.muted, height: 1.45),
                     ),
@@ -138,6 +177,8 @@ class _FormManagementScreenState extends State<FormManagementScreen> {
                           title: Text(template.name, style: const TextStyle(fontWeight: FontWeight.w700)),
                           subtitle: Text(
                             [
+                              if (template.categoryId != null)
+                                categoryNames[template.categoryId] ?? template.categoryId!,
                               if (template.isGlobal) 'Varsayılan form',
                               if (template.description?.isNotEmpty == true) template.description!,
                               '${template.fields.length} alan',
@@ -188,7 +229,7 @@ class _FormManagementScreenState extends State<FormManagementScreen> {
                               ),
                               if (!lockedGlobal)
                                 TextButton.icon(
-                                  onPressed: () => _clinic.deleteFormTemplate(template),
+                                  onPressed: () => _deleteTemplate(template),
                                   icon: const Icon(Icons.delete_outline, color: AppColors.danger),
                                   label: Text(
                                     template.isGlobal ? 'Kaldır' : 'Sil',
@@ -201,6 +242,8 @@ class _FormManagementScreenState extends State<FormManagementScreen> {
                       ],
                     ),
                   );
+                },
+              );
                 },
               );
             },

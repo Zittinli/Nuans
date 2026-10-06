@@ -7,6 +7,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 
 import '../models/appointment.dart';
 import '../models/clinic_form.dart';
+import '../models/form_category.dart';
 import '../models/note.dart';
 import '../models/patient.dart';
 
@@ -43,6 +44,9 @@ class ClinicService {
   CollectionReference<Map<String, dynamic>> get _globalTemplates =>
       _db.collection('globalFormTemplates');
 
+  CollectionReference<Map<String, dynamic>> get _formCategories =>
+      _db.collection('formCategories');
+
   CollectionReference<Map<String, dynamic>> _notes(String patientId) =>
       _patients.doc(patientId).collection('notes');
 
@@ -55,14 +59,14 @@ class ClinicService {
         );
   }
 
-  Future<void> savePatient(Patient patient) async {
+  Future<String> savePatient(Patient patient) async {
     final now = DateTime.now();
     final data = patient.copyWith(updatedAt: now).toMap();
     if (patient.id.isEmpty) {
       data['createdAt'] = Timestamp.fromDate(now);
       data['updatedAt'] = Timestamp.fromDate(now);
-      await _patients.add(data);
-      return;
+      final doc = await _patients.add(data);
+      return doc.id;
     }
     final batch = _db.batch();
     batch.set(_patients.doc(patient.id), data, SetOptions(merge: true));
@@ -71,6 +75,7 @@ class ClinicService {
       batch.update(doc.reference, {'patientName': patient.fullName});
     }
     await batch.commit();
+    return patient.id;
   }
 
   Future<void> deletePatient(String patientId) async {
@@ -171,7 +176,10 @@ class ClinicService {
 
     void emit() {
       if (personal == null || global == null || controller.isClosed) return;
-      controller.add([...global!, ...personal!]);
+      controller.add([
+        ...global!,
+        ...personal!,
+      ]);
     }
 
     final personalSub = _templates.orderBy('updatedAt', descending: true).snapshots().listen(
@@ -203,10 +211,65 @@ class ClinicService {
 
   Stream<List<ClinicFormTemplate>> watchGlobalFormTemplates() {
     return _globalTemplates.orderBy('updatedAt', descending: true).snapshots().map(
-          (snapshot) => snapshot.docs
-              .map((doc) => ClinicFormTemplate.fromDoc(doc, isGlobal: true))
-              .toList(),
+          (snapshot) => snapshot.docs.map((doc) => ClinicFormTemplate.fromDoc(doc, isGlobal: true)).toList(),
         );
+  }
+
+  Stream<List<FormCategory>> watchFormCategories() {
+    return _formCategories.orderBy('sortOrder').snapshots().map((snapshot) {
+      final items = snapshot.docs.map(FormCategory.fromDoc).toList();
+      items.sort((a, b) {
+        final order = a.sortOrder.compareTo(b.sortOrder);
+        if (order != 0) return order;
+        return a.name.compareTo(b.name);
+      });
+      return items;
+    });
+  }
+
+  /// Eksik varsayılan kategorileri ekler. Yazma yetkisi yoksa sessizce çıkar.
+  Future<void> ensureDefaultFormCategories() async {
+    try {
+      final snapshot = await _formCategories.get();
+      final existingIds = snapshot.docs.map((doc) => doc.id).toSet();
+      final existingNames = snapshot.docs
+          .map((doc) => '${doc.data()['name'] ?? doc.id}'.toLowerCase())
+          .toSet();
+      final now = DateTime.now();
+      for (var i = 0; i < kDefaultFormCategoryCodes.length; i++) {
+        final code = kDefaultFormCategoryCodes[i];
+        if (existingIds.contains(code)) continue;
+        if (existingNames.contains(code.toLowerCase())) continue;
+        final category = FormCategory(
+          id: code,
+          name: code,
+          sortOrder: i,
+          createdAt: now,
+          updatedAt: now,
+        );
+        await _formCategories.doc(code).set(category.toMap(), SetOptions(merge: true));
+      }
+    } on FirebaseException catch (error) {
+      if (error.code == 'permission-denied') return;
+      rethrow;
+    }
+  }
+
+  Future<String> saveFormCategory(FormCategory category) async {
+    final now = DateTime.now();
+    final data = category.copyWith(updatedAt: now).toMap();
+    if (category.id.isEmpty) {
+      data['createdAt'] = Timestamp.fromDate(now);
+      final doc = await _formCategories.add(data);
+      return doc.id;
+    }
+    data['updatedAt'] = Timestamp.fromDate(now);
+    await _formCategories.doc(category.id).set(data, SetOptions(merge: true));
+    return category.id;
+  }
+
+  Future<void> deleteFormCategory(String categoryId) {
+    return _formCategories.doc(categoryId).delete();
   }
 
   CollectionReference<Map<String, dynamic>> _templateCollection(bool isGlobal) {
