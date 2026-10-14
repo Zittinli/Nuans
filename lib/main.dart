@@ -51,7 +51,7 @@ class _NuansAppState extends State<NuansApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Nüans 2.0',
+      title: 'Nüans',
       navigatorKey: _nav,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
