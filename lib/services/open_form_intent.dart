@@ -6,7 +6,9 @@ import 'package:flutter/services.dart';
 
 import '../models/clinic_form.dart';
 import '../models/patient.dart';
+import '../models/patient_media.dart';
 import '../screens/form/form_management_screen.dart';
+import '../screens/patient/attach_media_screen.dart';
 import '../screens/patient/patient_detail_screen.dart';
 import '../services/clinic_service.dart';
 import '../theme/app_theme.dart';
@@ -19,20 +21,62 @@ class OpenFormIntent {
   static GlobalKey<NavigatorState>? navigatorKey;
   static var _listening = false;
   static var _importing = false;
+  static var _openingMedia = false;
 
   static void start(GlobalKey<NavigatorState> nav) {
     navigatorKey = nav;
     if (_listening) return;
     _listening = true;
     _channel.setMethodCallHandler((call) async {
-      if (call.method != 'opened') return;
-      await consumeAfterAuth();
+      if (call.method == 'opened') {
+        await consumeAfterAuth();
+      } else if (call.method == 'openedMedia') {
+        await consumeMediaAfterAuth();
+      }
     });
   }
 
   static bool get _signedIn {
     final user = FirebaseAuth.instance.currentUser;
     return user != null && user.emailVerified;
+  }
+
+  static Future<void> consumeMediaAfterAuth() async {
+    if (!_signedIn || _openingMedia) return;
+    if (navigatorKey?.currentState == null) return;
+    List<dynamic>? raw;
+    try {
+      raw = await _channel.invokeMethod<List<dynamic>>('takePendingMedia');
+    } on PlatformException catch (error) {
+      _toast('Dosya okunamadı: ${error.message ?? error.code}');
+      return;
+    }
+    if (raw == null || raw.isEmpty) return;
+    final files = <IncomingMedia>[];
+    for (final item in raw) {
+      if (item is! Map) continue;
+      final map = Map<String, dynamic>.from(item);
+      final path = map['path'] as String? ?? '';
+      if (path.isEmpty) continue;
+      files.add(
+        IncomingMedia(
+          path: path,
+          name: map['name'] as String? ?? 'dosya',
+          mime: map['mime'] as String? ?? '',
+        ),
+      );
+    }
+    if (files.isEmpty) return;
+    final nav = navigatorKey?.currentState;
+    if (nav == null) return;
+    _openingMedia = true;
+    try {
+      await nav.push(
+        MaterialPageRoute(builder: (_) => AttachMediaScreen(files: files)),
+      );
+    } finally {
+      _openingMedia = false;
+    }
   }
 
   static Future<void> consumeAfterAuth() async {
@@ -50,7 +94,7 @@ class OpenFormIntent {
       contents = await File(path).readAsString();
     } catch (_) {}
     if (!FormPack.looksLikePack(path, contents)) {
-      _toast('Bu dosya Nüans form dosyası değil.');
+      _toast('Bu dosya İNÜ SKY form dosyası değil.');
       return;
     }
     await openPath(path);

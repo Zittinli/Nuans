@@ -71,7 +71,7 @@ class FormPack {
     if (path.toLowerCase().endsWith('.zip')) {
       final extracted = await _shareChannel.invokeMethod<String>('unzipNuans', {'path': path});
       if (extracted == null || extracted.isEmpty) {
-        throw const FormatException('Zip içinde Nüans formu yok.');
+        throw const FormatException('Zip içinde İNÜ SKY formu yok.');
       }
       path = extracted;
     }
@@ -82,7 +82,7 @@ class FormPack {
     }
     final decoded = jsonDecode(text);
     if (!_isPackMap(decoded)) {
-      throw const FormatException('Bu dosya Nüans form dosyası değil.');
+      throw const FormatException('Bu dosya İNÜ SKY form dosyası değil.');
     }
     final data = Map<String, dynamic>.from(decoded as Map);
 

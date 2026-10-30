@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../models/clinic_form.dart';
 import '../../models/patient.dart';
 import '../../services/clinic_service.dart';
+import '../../services/local_clinic_cache.dart';
 import '../../services/pdf_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/form_pack.dart';
@@ -131,14 +132,17 @@ class FormEntryDetailScreen extends StatelessWidget {
             const SizedBox(height: 12),
             const Text('Taranmış sayfalar', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
             const SizedBox(height: 8),
-            ...entry.scanUrls.map(
-              (url) => Padding(
+            ...entry.scanUrls.indexed.map(
+              (item) => Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: url.startsWith('http')
-                      ? Image.network(url)
-                      : Image.file(File(url)),
+                  child: _ScanPage(
+                    patientId: patient.id,
+                    formId: entry.id,
+                    index: item.$1,
+                    url: item.$2,
+                  ),
                 ),
               ),
             ),
@@ -146,6 +150,44 @@ class FormEntryDetailScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _ScanPage extends StatefulWidget {
+  const _ScanPage({
+    required this.patientId,
+    required this.formId,
+    required this.index,
+    required this.url,
+  });
+
+  final String patientId;
+  final String formId;
+  final int index;
+  final String url;
+
+  @override
+  State<_ScanPage> createState() => _ScanPageState();
+}
+
+class _ScanPageState extends State<_ScanPage> {
+  File? _file;
+
+  @override
+  void initState() {
+    super.initState();
+    LocalClinicCache().scanFile(widget.patientId, widget.formId, widget.index).then((file) {
+      if (mounted && file != null) setState(() => _file = file);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final file = _file;
+    if (file != null) return Image.file(file);
+    if (widget.url.startsWith('http')) return Image.network(widget.url);
+    if (widget.url.isEmpty) return const SizedBox.shrink();
+    return Image.file(File(widget.url));
   }
 }
 

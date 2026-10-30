@@ -62,7 +62,7 @@ class _FormManagementScreenState extends State<FormManagementScreen> {
       await FormPack.share(template: template, clinic: _clinic);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('WhatsApp’ta dosyaya basıp Nüans ile aç. İndirmene gerek yok.')),
+        const SnackBar(content: Text('WhatsApp’ta dosyaya basıp İNÜ SKY ile aç. İndirmene gerek yok.')),
       );
     } catch (error) {
       if (!mounted) return;
@@ -199,12 +199,32 @@ class _FormManagementScreenState extends State<FormManagementScreen> {
                           SwitchListTile(
                             title: const Text('Hasta ekranında göster'),
                             subtitle: Text(
-                              template.isGlobal
-                                  ? 'Tüm hesapların listesinde görünsün'
-                                  : 'Aktif formlar hasta detayında seçilebilir',
+                              template.visibleToEveryone
+                                  ? 'Bu seçim herkesin hasta ekranını etkiler'
+                                  : template.isGlobal
+                                      ? 'Tüm hesapların listesinde görünsün'
+                                      : 'Aktif formlar hasta detayında seçilebilir',
                             ),
                             value: template.active,
                             onChanged: (value) => _clinic.setFormTemplateActive(template, value),
+                          ),
+                        if (canManageGlobal && !template.isGlobal)
+                          SwitchListTile(
+                            title: const Text('Herkes görsün'),
+                            subtitle: const Text(
+                              'Açıkken form tüm hesaplarda görünür. Bu kayıt Firebase’de tutulur.',
+                            ),
+                            value: template.visibleToEveryone,
+                            onChanged: (value) async {
+                              try {
+                                await _clinic.setFormVisibleToEveryone(template, value);
+                              } catch (error) {
+                                if (!context.mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Paylaşım kaydedilemedi: $error')),
+                                );
+                              }
+                            },
                           ),
                         if (template.hasSourceFile)
                           ListTile(

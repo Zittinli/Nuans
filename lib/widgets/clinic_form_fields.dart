@@ -111,6 +111,13 @@ class _SectionFrame extends StatelessWidget {
   }
 }
 
+String _formatStoredDate(String? current, {String empty = 'Seçilmedi'}) {
+  if (current == null || current.isEmpty) return empty;
+  final parsed = DateTime.tryParse(current);
+  if (parsed == null) return current;
+  return DateFormat('d MMMM yyyy', 'tr_TR').format(parsed);
+}
+
 class _QuestionText extends StatelessWidget {
   const _QuestionText(this.text, {this.required = false});
 
@@ -247,7 +254,7 @@ class _ClinicFormFieldTile extends StatelessWidget {
                         ? 'Örnek: 15 Mart 2026'
                         : current == null || current.isEmpty
                             ? 'Seçilmedi'
-                            : DateFormat('d MMMM yyyy', 'tr_TR').format(DateTime.parse(current)),
+                            : _formatStoredDate(current),
                     style: TextStyle(color: preview ? AppColors.muted : null),
                   ),
                 ),
@@ -277,6 +284,88 @@ class _ClinicFormFieldTile extends StatelessWidget {
                       },
               ),
             ],
+          ),
+        );
+      case FormFieldType.likert:
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: FormField<int>(
+            initialValue: preview ? null : _ratingOf(values?[field.id]),
+            validator: preview
+                ? null
+                : (value) {
+                    if (field.required && value == null) return '1–5 arası bir seçenek işaretleyin';
+                    return null;
+                  },
+            builder: (state) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _QuestionText(field.label, required: field.required),
+                  if (state.errorText != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Text(state.errorText!, style: const TextStyle(color: AppColors.danger, fontSize: 12)),
+                    ),
+                  Row(
+                    children: List.generate(5, (index) {
+                      final score = index + 1;
+                      final selected = state.value == score;
+                      return Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 3),
+                          child: Material(
+                            color: selected ? AppColors.primary : AppColors.chip,
+                            borderRadius: BorderRadius.circular(10),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(10),
+                              onTap: preview
+                                  ? null
+                                  : () {
+                                      state.didChange(score);
+                                      values?[field.id] = score;
+                                      _notify();
+                                    },
+                              child: SizedBox(
+                                height: 44,
+                                child: Center(
+                                  child: Text(
+                                    '$score',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 16,
+                                      color: selected ? Colors.white : AppColors.primary,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 6),
+                  const Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '1 Hiç hissetmiyorum',
+                          style: TextStyle(color: AppColors.muted, fontSize: 11, height: 1.3),
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          '5 Çok hissediyorum',
+                          textAlign: TextAlign.right,
+                          style: TextStyle(color: AppColors.muted, fontSize: 11, height: 1.3),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              );
+            },
           ),
         );
       case FormFieldType.rating:
@@ -602,7 +691,7 @@ class _FollowUpInput extends StatelessWidget {
             child: Text(
               current == null || current.isEmpty
                   ? 'Tarih seçin'
-                  : DateFormat('d MMMM yyyy', 'tr_TR').format(DateTime.parse(current)),
+                  : _formatStoredDate(current, empty: 'Tarih seçin'),
             ),
           ),
         );

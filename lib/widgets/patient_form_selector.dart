@@ -9,9 +9,10 @@ import '../services/clinic_service.dart';
 import '../theme/app_theme.dart';
 
 class PatientFormSelector extends StatefulWidget {
-  const PatientFormSelector({super.key, required this.patient});
+  const PatientFormSelector({super.key, required this.patient, this.popBeforeFill = false});
 
   final Patient patient;
+  final bool popBeforeFill;
 
   @override
   State<PatientFormSelector> createState() => _PatientFormSelectorState();
@@ -29,9 +30,43 @@ class _PatientFormSelectorState extends State<PatientFormSelector> {
   }
 
   void _openFill(ClinicFormTemplate template) {
-    Navigator.of(context).push(
+    final patient = widget.patient;
+    final root = Navigator.of(context, rootNavigator: true);
+    if (widget.popBeforeFill) {
+      Navigator.of(context).pop();
+    }
+    root.push(
       MaterialPageRoute(
-        builder: (_) => FormFillScreen(patient: widget.patient, template: template),
+        builder: (_) => FormFillScreen(patient: patient, template: template),
+      ),
+    );
+  }
+
+  Future<T?> _pickOne<T>({
+    required String title,
+    required List<T> items,
+    required String Function(T item) labelOf,
+  }) {
+    return showDialog<T>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              for (final item in items)
+                ListTile(
+                  title: Text(labelOf(item)),
+                  onTap: () => Navigator.pop(dialogContext, item),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Vazgeç')),
+        ],
       ),
     );
   }
@@ -73,34 +108,22 @@ class _PatientFormSelectorState extends State<PatientFormSelector> {
               children: [
                 const Text('Form kategorisi', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
-                DropdownButtonFormField<FormCategory?>(
-                  value: selectedCategory,
-                  isExpanded: true,
-                  decoration: InputDecoration(
-                    hintText: categories.isEmpty ? 'Kategori yok' : 'Kategori seçin',
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  ),
-                  items: [
-                    if (categories.isEmpty)
-                      const DropdownMenuItem<FormCategory?>(
-                        value: null,
-                        enabled: false,
-                        child: Text('Yönetimden kategori ekleyin'),
-                      )
-                    else
-                      ...categories.map(
-                        (category) => DropdownMenuItem(
-                          value: category,
-                          child: Text(category.name, overflow: TextOverflow.ellipsis),
-                        ),
-                      ),
-                  ],
-                  onChanged: categories.isEmpty
-                      ? null
-                      : (value) => setState(() {
-                            _selectedCategory = value;
-                            _selectedForm = null;
-                          }),
+                _ChoiceField(
+                  hint: categories.isEmpty ? 'Kategori yok' : 'Kategori seçin',
+                  value: selectedCategory?.name,
+                  enabled: categories.isNotEmpty,
+                  onTap: () async {
+                    final picked = await _pickOne<FormCategory>(
+                      title: 'Form kategorisi',
+                      items: categories,
+                      labelOf: (item) => item.name,
+                    );
+                    if (picked == null || !mounted) return;
+                    setState(() {
+                      _selectedCategory = picked;
+                      _selectedForm = null;
+                    });
+                  },
                 ),
                 if (selectedCategory != null) ...[
                   const SizedBox(height: 12),
@@ -110,38 +133,23 @@ class _PatientFormSelectorState extends State<PatientFormSelector> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
-                        child: DropdownButtonFormField<ClinicFormTemplate?>(
-                          value: selectedForm,
-                          isExpanded: true,
-                          decoration: InputDecoration(
-                            hintText: formsInCategory.isEmpty
-                                ? 'Bu kategoride aktif form yok'
-                                : 'Form şablonu',
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          ),
-                          items: [
-                            if (formsInCategory.isEmpty)
-                              const DropdownMenuItem<ClinicFormTemplate?>(
-                                value: null,
-                                enabled: false,
-                                child: Text('Form ekleyin'),
-                              )
-                            else
-                              ...formsInCategory.map(
-                                (template) => DropdownMenuItem(
-                                  value: template,
-                                  child: Text(
-                                    template.isGlobal
-                                        ? '${template.name} (varsayılan)'
-                                        : template.name,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ),
-                          ],
-                          onChanged: formsInCategory.isEmpty
+                        child: _ChoiceField(
+                          hint: formsInCategory.isEmpty ? 'Bu kategoride aktif form yok' : 'Form şablonu',
+                          value: selectedForm == null
                               ? null
-                              : (value) => setState(() => _selectedForm = value),
+                              : selectedForm.isGlobal
+                                  ? '${selectedForm.name} (varsayılan)'
+                                  : selectedForm.name,
+                          enabled: formsInCategory.isNotEmpty,
+                          onTap: () async {
+                            final picked = await _pickOne<ClinicFormTemplate>(
+                              title: 'Form seç',
+                              items: formsInCategory,
+                              labelOf: (item) => item.isGlobal ? '${item.name} (varsayılan)' : item.name,
+                            );
+                            if (picked == null || !mounted) return;
+                            setState(() => _selectedForm = picked);
+                          },
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -177,6 +185,42 @@ class _PatientFormSelectorState extends State<PatientFormSelector> {
           },
         );
       },
+    );
+  }
+}
+
+class _ChoiceField extends StatelessWidget {
+  const _ChoiceField({
+    required this.hint,
+    required this.value,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final String hint;
+  final String? value;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = value?.trim();
+    final hasValue = shown != null && shown.isNotEmpty;
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(12),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          hintText: hint,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          suffixIcon: const Icon(Icons.arrow_drop_down),
+        ),
+        child: Text(
+          hasValue ? shown : hint,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: hasValue && enabled ? null : AppColors.muted),
+        ),
+      ),
     );
   }
 }

@@ -42,6 +42,12 @@ class FormCategory {
     };
   }
 
+  @override
+  bool operator ==(Object other) => other is FormCategory && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
+
   FormCategory copyWith({
     String? name,
     String? description,

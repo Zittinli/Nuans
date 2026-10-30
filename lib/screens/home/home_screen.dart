@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:intl/intl.dart';
 
 import '../../config/admin_config.dart';
@@ -8,7 +9,9 @@ import '../../models/patient.dart';
 import '../../services/auth_service.dart';
 import '../../services/clinic_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/brand_logo.dart';
 import '../admin/admin_home_screen.dart';
+import '../feedback/send_feedback_screen.dart';
 import '../auth/change_password_screen.dart';
 import '../calendar/clinic_calendar_screen.dart';
 import '../form/form_template_editor_screen.dart';
@@ -66,15 +69,19 @@ class _HomeScreenState extends State<HomeScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              const Center(child: BrandLogo(size: 72)),
+              const SizedBox(height: 16),
               Text(
                 doctor?.fullName.isNotEmpty == true
                     ? doctor!.fullName
                     : user?.displayName ?? 'Doktor',
+                textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 4),
               Text(
                 user?.email ?? '',
+                textAlign: TextAlign.center,
                 style: const TextStyle(color: AppColors.muted),
               ),
               const SizedBox(height: 16),
@@ -134,6 +141,25 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: const Icon(Icons.logout),
                 label: const Text('Çıkış yap'),
               ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  final name = doctor?.fullName.trim().isNotEmpty == true
+                      ? doctor!.fullName.trim()
+                      : (user?.displayName?.trim().isNotEmpty == true ? user!.displayName!.trim() : 'Kullanıcı');
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => SendFeedbackScreen(
+                        senderName: name,
+                        senderEmail: user?.email ?? doctor?.email ?? '',
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.feedback_outlined),
+                label: const Text('Geri bildirim'),
+              ),
             ],
             ),
           ),
@@ -159,8 +185,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 _auth.currentUser?.displayName?.split(' ').first ??
                 'Doktor';
 
-            return Scaffold(
+            return WithForegroundTask(
+              child: Scaffold(
               appBar: AppBar(
+                leading: const Center(child: BrandLogo(size: 36)),
                 title: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -250,6 +278,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
+              ),
             );
           },
         );

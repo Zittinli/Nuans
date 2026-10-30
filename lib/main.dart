@@ -1,6 +1,8 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
@@ -9,17 +11,27 @@ import 'screens/auth/login_screen.dart';
 import 'screens/auth/verify_email_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/setup/firebase_setup_screen.dart';
+import 'services/media_upload_queue.dart';
 import 'services/open_form_intent.dart';
 import 'theme/app_theme.dart';
+import 'widgets/brand_logo.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  FlutterForegroundTask.initCommunicationPort();
+  MediaUploadQueue.instance.prepare();
   await initializeDateFormatting('tr_TR');
 
   var firebaseReady = DefaultFirebaseOptions.isConfigured;
   if (firebaseReady) {
     try {
       await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+      try {
+        FirebaseFirestore.instance.settings = const Settings(
+          persistenceEnabled: true,
+          cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+        );
+      } catch (_) {}
     } catch (_) {
       firebaseReady = false;
     }
@@ -51,7 +63,7 @@ class _NuansAppState extends State<NuansApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Nüans',
+      title: 'İNÜ SKY',
       navigatorKey: _nav,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
@@ -64,13 +76,23 @@ class _NuansAppState extends State<NuansApp> {
       ],
       home: widget.firebaseReady ? const AuthGate() : const FirebaseSetupScreen(),
       builder: (context, child) {
-        final bottom = MediaQuery.paddingOf(context).bottom;
+        final inset = MediaQuery.viewPaddingOf(context).bottom;
+        final media = MediaQuery.of(context);
         return Stack(
           children: [
-            child ?? const SizedBox.shrink(),
+            Padding(
+              padding: EdgeInsets.only(bottom: inset),
+              child: MediaQuery(
+                data: media.copyWith(
+                  padding: media.padding.copyWith(bottom: 0),
+                  viewPadding: media.viewPadding.copyWith(bottom: 0),
+                ),
+                child: child ?? const SizedBox.shrink(),
+              ),
+            ),
             Positioned(
               left: 10,
-              bottom: 6 + bottom,
+              bottom: 6 + inset,
               child: const IgnorePointer(
                 child: Text(
                   'made by posni',
@@ -111,6 +133,7 @@ class AuthGate extends StatelessWidget {
         }
         WidgetsBinding.instance.addPostFrameCallback((_) {
           OpenFormIntent.consumeAfterAuth();
+          OpenFormIntent.consumeMediaAfterAuth();
         });
         return const HomeScreen();
       },
@@ -129,10 +152,10 @@ class _LaunchScreen extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.favorite_border, color: Colors.white, size: 48),
+            BrandLogo(size: 108),
             SizedBox(height: 16),
             Text(
-              'Nüans',
+              'İNÜ SKY',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 32,

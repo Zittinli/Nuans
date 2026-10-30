@@ -7,11 +7,15 @@ import '../../models/clinic_form.dart';
 import '../../models/doctor.dart';
 import '../../models/note.dart';
 import '../../models/patient.dart';
+import '../../models/patient_media.dart';
 import '../../services/admin_service.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import 'feedback_inbox_screen.dart';
 import '../form/form_categories_screen.dart';
 import '../form/form_entry_detail_screen.dart';
+import '../patient/patient_media_screen.dart';
+import '../../widgets/media_preview.dart';
 import '../form/form_template_editor_screen.dart';
 import '../../utils/confirm_twice.dart';
 import '../../utils/form_pack.dart';
@@ -41,10 +45,12 @@ class AdminHomeScreen extends StatelessWidget {
           );
         }
 
+        final superAdmin = actor.isSuperAdmin;
         final tabs = <Tab>[
           if (actor.canViewAllAccounts || actor.canManagePermissions) const Tab(text: 'Hesaplar'),
           if (actor.canManageFormCategories) const Tab(text: 'Form kategorileri'),
           if (actor.canManageDefaultForms) const Tab(text: 'Varsayılan formlar'),
+          if (superAdmin) const Tab(text: 'Geri bildirimler'),
         ];
 
         if (tabs.isEmpty) {
@@ -59,7 +65,7 @@ class AdminHomeScreen extends StatelessWidget {
           child: Scaffold(
             appBar: AppBar(
               title: const Text('Yönetim'),
-              bottom: TabBar(tabs: tabs),
+              bottom: TabBar(isScrollable: true, tabs: tabs),
             ),
             body: TabBarView(
               children: [
@@ -67,6 +73,7 @@ class AdminHomeScreen extends StatelessWidget {
                   _AccountsTab(actor: actor),
                 if (actor.canManageFormCategories) const FormCategoriesScreen(embedded: true),
                 if (actor.canManageDefaultForms) const _DefaultFormsTab(),
+                if (superAdmin) const FeedbackInboxScreen(),
               ],
             ),
           ),
@@ -408,42 +415,194 @@ class _AccountForms extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final admin = AdminService();
     return StreamBuilder<List<ClinicFormTemplate>>(
-      stream: AdminService().watchFormTemplates(doctorId),
+      stream: admin.watchFormTemplates(doctorId),
       builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return Text('Formlar yüklenemedi: ${snapshot.error}');
-        }
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final templates = snapshot.data!;
-        if (templates.isEmpty) {
-          return const Card(
-            child: ListTile(title: Text('Bu hesap henüz form eklememiş.')),
-          );
-        }
-        return Column(
-          children: templates
-              .map(
-                (template) => Padding(
+        return StreamBuilder<List<AccountFilledForm>>(
+          stream: admin.watchAccountFilledForms(doctorId),
+          builder: (context, filledSnapshot) {
+            if (snapshot.hasError) {
+              return Text('Formlar yüklenemedi: ${snapshot.error}');
+            }
+            if (filledSnapshot.hasError) {
+              return Text('Doldurulmuş formlar yüklenemedi: ${filledSnapshot.error}');
+            }
+            if (!snapshot.hasData || !filledSnapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final templates = snapshot.data!;
+            final filled = filledSnapshot.data!;
+            if (templates.isEmpty && filled.isEmpty) {
+              return const Card(
+                child: ListTile(title: Text('Bu hesap henüz form eklememiş.')),
+              );
+            }
+            final matchedIds = <String>{};
+            final cards = <Widget>[
+              for (final template in templates)
+                Padding(
                   padding: const EdgeInsets.only(bottom: 8),
-                  child: Card(
-                    child: ListTile(
-                      title: Text(template.name),
-                      subtitle: Text('${template.fields.length} alan'),
-                      trailing: IconButton(
-                        tooltip: 'Dışa aktar',
-                        onPressed: () => FormPack.share(template: template),
-                        icon: const Icon(Icons.ios_share_outlined),
+                  child: _AccountTemplateCard(
+                    template: template,
+                    fills: [
+                      for (final item in filled)
+                        if (item.entry.templateId == template.id) item,
+                    ],
+                  ),
+                ),
+            ];
+            for (final template in templates) {
+              matchedIds.add(template.id);
+            }
+            final orphans = [
+              for (final item in filled)
+                if (item.entry.templateId == null || !matchedIds.contains(item.entry.templateId)) item,
+            ];
+            if (orphans.isNotEmpty) {
+              cards.add(
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _AccountTemplateCard(
+                    fills: orphans,
+                    title: 'Şablonu silinmiş doldurulmuş formlar',
+                  ),
+                ),
+              );
+            }
+            return Column(children: cards);
+          },
+        );
+      },
+    );
+  }
+}
+
+class _AccountTemplateCard extends StatelessWidget {
+  const _AccountTemplateCard({
+    required this.fills,
+    this.template,
+    this.title,
+  });
+
+  final ClinicFormTemplate? template;
+  final List<AccountFilledForm> fills;
+  final String? title;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = title ?? template?.name ?? 'Form';
+    final filledCount = fills.length;
+    return Card(
+      child: ListTile(
+        title: Text(name),
+        subtitle: Text(
+          template == null
+              ? '$filledCount doldurulmuş'
+              : '${template!.fields.length} alan · $filledCount doldurulmuş',
+        ),
+        trailing: template == null
+            ? const Icon(Icons.chevron_right)
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: 'Dışa aktar',
+                    onPressed: () => FormPack.share(template: template!),
+                    icon: const Icon(Icons.ios_share_outlined),
+                  ),
+                  const Icon(Icons.chevron_right),
+                ],
+              ),
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => _AccountFormFillsScreen(
+                title: name,
+                template: template,
+                fills: fills,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _AccountFormFillsScreen extends StatelessWidget {
+  const _AccountFormFillsScreen({
+    required this.title,
+    required this.fills,
+    this.template,
+  });
+
+  final String title;
+  final ClinicFormTemplate? template;
+  final List<AccountFilledForm> fills;
+
+  @override
+  Widget build(BuildContext context) {
+    final templates = [if (template != null) template!];
+    return Scaffold(
+      appBar: AppBar(title: Text(title)),
+      body: fills.isEmpty
+          ? const Center(child: Text('Bu form henüz doldurulmamış.'))
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+              children: [
+                for (final item in fills)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Card(
+                      child: InkWell(
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => FormEntryDetailScreen(
+                                patient: item.patient,
+                                entry: item.entry,
+                                templates: templates,
+                                readOnly: true,
+                              ),
+                            ),
+                          );
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      item.patient.fullName,
+                                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                                    ),
+                                  ),
+                                  const Icon(Icons.chevron_right),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                [
+                                  item.entry.title,
+                                  item.entry.source.label,
+                                  DateFormat('d MMM yyyy HH:mm', 'tr_TR').format(item.entry.createdAt),
+                                ].join(' · '),
+                                style: const TextStyle(color: AppColors.muted, fontSize: 12),
+                              ),
+                              const SizedBox(height: 12),
+                              ...filledFormRows(item.entry, template),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
-              )
-              .toList(),
-        );
-      },
+              ],
+            ),
     );
   }
 }
@@ -573,6 +732,57 @@ class AdminPatientInspectScreen extends StatelessWidget {
                       ),
                     )
                     .toList(),
+              );
+            },
+          ),
+          const SizedBox(height: 20),
+          const Text('Dosyalar', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          StreamBuilder<List<PatientMedia>>(
+            stream: admin.watchPatientMedia(account.id, patient.id),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) return Text('Dosyalar yüklenemedi: ${snapshot.error}');
+              if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+              final items = snapshot.data!;
+              if (items.isEmpty) {
+                return const Card(child: ListTile(title: Text('Fotoğraf, video veya ses yok.')));
+              }
+              return Column(
+                children: [
+                  for (final media in items)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Card(
+                        child: ListTile(
+                          leading: SizedBox(
+                            width: 56,
+                            height: 56,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: ColoredBox(
+                                color: AppColors.chip,
+                                child: MediaPreview(media: media),
+                              ),
+                            ),
+                          ),
+                          title: Text(media.title),
+                          subtitle: Text(
+                            [
+                              media.kind.label,
+                              DateFormat('d MMM yyyy HH:mm', 'tr_TR').format(media.createdAt),
+                              if (media.sessionTitle != null && media.sessionTitle!.trim().isNotEmpty)
+                                media.sessionTitle!,
+                            ].join(' · '),
+                          ),
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => PatientMediaScreen(media: media)),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                ],
               );
             },
           ),

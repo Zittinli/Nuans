@@ -16,6 +16,7 @@ class MainActivity : FlutterActivity() {
     private val channelName = "com.nuans.nuans/open_file"
     private var channel: MethodChannel? = null
     private var pendingUri: String? = null
+    private var pendingMediaUris: List<String>? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -33,6 +34,22 @@ class MainActivity : FlutterActivity() {
                             } catch (error: Exception) {
                                 result.error("copy", error.message, null)
                             }
+                        }
+                    }
+                    "takePendingMedia" -> {
+                        val uris = pendingMediaUris
+                        pendingMediaUris = null
+                        if (uris.isNullOrEmpty()) {
+                            result.success(null)
+                        } else {
+                            Thread {
+                                try {
+                                    val copied = uris.map { copyMediaToCache(Uri.parse(it)) }
+                                    runOnUiThread { result.success(copied) }
+                                } catch (error: Exception) {
+                                    runOnUiThread { result.error("copy", error.message, null) }
+                                }
+                            }.start()
                         }
                     }
                     "copyUri" -> {
@@ -137,18 +154,79 @@ class MainActivity : FlutterActivity() {
     private fun handleIntent(intent: Intent?, notifyDart: Boolean) {
         if (intent == null) return
         val action = intent.action
-        if (action != Intent.ACTION_VIEW && action != Intent.ACTION_SEND && action != Intent.ACTION_EDIT) {
+        if (action != Intent.ACTION_VIEW &&
+            action != Intent.ACTION_SEND &&
+            action != Intent.ACTION_SEND_MULTIPLE &&
+            action != Intent.ACTION_EDIT
+        ) {
             return
         }
-        val uri = extractUri(intent) ?: return
+        val uris = extractUris(intent)
+        if (uris.isEmpty()) return
+        if (isMediaShare(intent, uris)) {
+            pendingUri = null
+            pendingMediaUris = uris.map { it.toString() }
+            if (notifyDart) {
+                channel?.invokeMethod("openedMedia", null)
+            }
+            return
+        }
+        val uri = uris.first()
         try {
             contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         } catch (_: SecurityException) {
         }
+        pendingMediaUris = null
         pendingUri = uri.toString()
         if (notifyDart) {
             notifyPendingOpenIfAny()
         }
+    }
+
+    private fun isMediaShare(intent: Intent, uris: List<Uri>): Boolean {
+        if (isMediaMime(intent.type)) return true
+        return uris.isNotEmpty() && uris.all { isMediaMime(contentResolver.getType(it)) }
+    }
+
+    private fun isMediaMime(mime: String?): Boolean {
+        if (mime.isNullOrEmpty()) return false
+        return mime.startsWith("image/") || mime.startsWith("video/") || mime.startsWith("audio/")
+    }
+
+    private fun extractUris(intent: Intent): List<Uri> {
+        if (intent.action == Intent.ACTION_SEND_MULTIPLE) {
+            val many = if (android.os.Build.VERSION.SDK_INT >= 33) {
+                intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM)
+            }
+            if (!many.isNullOrEmpty()) return many
+        }
+        val one = extractUri(intent)
+        return if (one == null) emptyList() else listOf(one)
+    }
+
+    private fun copyMediaToCache(uri: Uri): HashMap<String, String> {
+        val mime = contentResolver.getType(uri) ?: "application/octet-stream"
+        val display = queryDisplayName(uri) ?: uri.lastPathSegment ?: "dosya"
+        val safe = display.substringAfterLast('/')
+            .replace(Regex("[\\\\/:*?\"<>|]"), "_")
+            .ifEmpty { "dosya" }
+        val out = File(cacheDir, "media_${System.currentTimeMillis()}_$safe")
+        val input = contentResolver.openInputStream(uri)
+            ?: throw IllegalStateException("Dosya açılamadı.")
+        input.use { stream ->
+            out.outputStream().use { output -> stream.copyTo(output) }
+        }
+        if (!out.exists() || out.length() == 0L) {
+            throw IllegalStateException("Dosya kopyalanamadı.")
+        }
+        return hashMapOf(
+            "path" to out.absolutePath,
+            "name" to display,
+            "mime" to mime,
+        )
     }
 
     private fun extractUri(intent: Intent): Uri? {
@@ -217,7 +295,7 @@ class MainActivity : FlutterActivity() {
                 entry = zip.nextEntry
             }
         }
-        throw IllegalStateException("Zip içinde Nüans formu yok.")
+        throw IllegalStateException("Zip içinde İNÜ SKY formu yok.")
     }
 
     private fun isZip(file: File): Boolean {

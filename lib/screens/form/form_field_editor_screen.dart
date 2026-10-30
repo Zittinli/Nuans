@@ -172,7 +172,13 @@ class _FormFieldEditorScreenState extends State<FormFieldEditorScreen> {
             autofocus: !_isEditing,
             decoration: InputDecoration(
               labelText: _type.isTable ? 'Tablo başlığı' : _type.isSection ? 'Bölüm başlığı' : 'Alan başlığı',
-              hintText: _type.isTable ? 'Örn. Kullandığı ilaçlar' : _type.isSection ? 'Örn. Özgeçmiş' : 'Örn. Başvuru şikayeti',
+              hintText: _type.isTable
+                  ? 'Örn. Kullandığı ilaçlar'
+                  : _type.isSection
+                      ? 'Örn. Özgeçmiş'
+                      : _type == FormFieldType.likert
+                          ? 'Örn. Kaygı düzeyi'
+                          : 'Örn. Başvuru şikayeti',
             ),
           ),
           const SizedBox(height: 20),
@@ -228,6 +234,13 @@ class _FormFieldEditorScreenState extends State<FormFieldEditorScreen> {
               ),
             );
           }),
+          if (_type == FormFieldType.likert) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Hasta 1 ile 5 arasında işaretler. 1 hiç hissetmiyorum, 5 çok hissediyorum anlamına gelir.',
+              style: TextStyle(color: AppColors.muted, height: 1.4),
+            ),
+          ],
           if (_type.isSection) ...[
             const SizedBox(height: 8),
             const Text(
@@ -307,25 +320,11 @@ class _FormFieldEditorScreenState extends State<FormFieldEditorScreen> {
                             }
                           }),
                         ),
-                      DropdownButtonFormField<FormFieldType?>(
+                      _TypeChoice(
+                        label: _type.isTable ? 'Hücre türü' : 'Bu seçeneğin alan türü',
                         value: _type.isTable ? (option.extraType ?? FormFieldType.text) : option.extraType,
-                        isExpanded: true,
-                        decoration: InputDecoration(
-                          labelText: _type.isTable ? 'Hücre türü' : 'Bu seçeneğin alan türü',
-                        ),
-                        items: [
-                          if (!_type.isTable)
-                            const DropdownMenuItem<FormFieldType?>(
-                              value: null,
-                              child: Text('Yalnızca seçim (ek alan yok)'),
-                            ),
-                          ...(_type.isTable ? FormFieldType.columnTypes : FormFieldType.extraChoices).map(
-                            (type) => DropdownMenuItem<FormFieldType?>(
-                              value: type,
-                              child: Text(type.label),
-                            ),
-                          ),
-                        ],
+                        allowNone: !_type.isTable,
+                        choices: _type.isTable ? FormFieldType.columnTypes : FormFieldType.extraChoices,
                         onChanged: (value) => setState(() => option.extraType = value),
                       ),
                     ],
@@ -344,6 +343,73 @@ class _FormFieldEditorScreenState extends State<FormFieldEditorScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _TypePick {
+  const _TypePick(this.type);
+  final FormFieldType? type;
+}
+
+class _TypeChoice extends StatelessWidget {
+  const _TypeChoice({
+    required this.label,
+    required this.value,
+    required this.allowNone,
+    required this.choices,
+    required this.onChanged,
+  });
+
+  final String label;
+  final FormFieldType? value;
+  final bool allowNone;
+  final List<FormFieldType> choices;
+  final ValueChanged<FormFieldType?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final current = value != null && choices.contains(value) ? value : (allowNone ? null : FormFieldType.text);
+    return InkWell(
+      onTap: () async {
+        final picked = await showDialog<_TypePick>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(label),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  if (allowNone)
+                    ListTile(
+                      title: const Text('Yalnızca seçim (ek alan yok)'),
+                      onTap: () => Navigator.pop(dialogContext, const _TypePick(null)),
+                    ),
+                  for (final type in choices)
+                    ListTile(
+                      title: Text(type.label),
+                      onTap: () => Navigator.pop(dialogContext, _TypePick(type)),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Vazgeç')),
+            ],
+          ),
+        );
+        if (picked == null) return;
+        onChanged(picked.type);
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          suffixIcon: const Icon(Icons.arrow_drop_down),
+        ),
+        child: Text(current == null ? 'Yalnızca seçim (ek alan yok)' : current.label),
       ),
     );
   }

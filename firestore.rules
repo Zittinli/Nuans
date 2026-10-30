@@ -84,6 +84,11 @@ service cloud.firestore {
           allow read: if isOwner(doctorId) || hasPermission('viewAllAccounts');
           allow write: if isOwner(doctorId);
         }
+
+        match /media/{mediaId} {
+          allow read: if isOwner(doctorId) || hasPermission('viewAllAccounts');
+          allow write: if isOwner(doctorId);
+        }
       }
 
       match /appointments/{appointmentId} {
@@ -95,6 +100,12 @@ service cloud.firestore {
         allow read: if isOwner(doctorId) || hasPermission('viewAllAccounts');
         allow write: if isOwner(doctorId);
       }
+
+      match /removedMedia/{mediaId} {
+        allow read: if isOwner(doctorId) || hasPermission('viewAllAccounts');
+        allow create, update: if isOwner(doctorId);
+        allow delete: if false;
+      }
     }
 
     match /globalFormTemplates/{templateId} {
@@ -105,6 +116,51 @@ service cloud.firestore {
     match /formCategories/{categoryId} {
       allow read: if isSignedIn();
       allow write: if canManageFormCategories();
+    }
+
+    function feedbackImagesOk() {
+      let urls = request.resource.data.imageUrls;
+      return urls is list
+        && urls.size() <= 4
+        && (urls.size() == 0 || (urls[0] is string && urls[0].size() < 2000))
+        && (urls.size() < 2 || (urls[1] is string && urls[1].size() < 2000))
+        && (urls.size() < 3 || (urls[2] is string && urls[2].size() < 2000))
+        && (urls.size() < 4 || (urls[3] is string && urls[3].size() < 2000));
+    }
+
+    match /feedback/{feedbackId} {
+      allow create: if isSignedIn()
+        && request.resource.data.keys().hasOnly([
+          'message',
+          'senderUid',
+          'senderName',
+          'senderEmail',
+          'imageUrls',
+          'createdAt',
+        ])
+        && request.resource.data.senderUid == request.auth.uid
+        && request.resource.data.message is string
+        && request.resource.data.message.size() > 0
+        && request.resource.data.message.size() <= 4000
+        && request.resource.data.senderName is string
+        && request.resource.data.senderEmail is string
+        && feedbackImagesOk()
+        && request.resource.data.createdAt == request.time;
+      allow read: if isSuperAdmin();
+      allow update: if isSuperAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['resolved', 'resolvedAt'])
+        && request.resource.data.resolved is bool
+        && (
+          (
+            request.resource.data.resolved == true
+            && request.resource.data.resolvedAt == request.time
+          )
+          || (
+            request.resource.data.resolved == false
+            && !('resolvedAt' in request.resource.data)
+          )
+        );
+      allow delete: if false;
     }
   }
 }

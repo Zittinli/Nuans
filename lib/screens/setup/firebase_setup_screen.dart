@@ -25,7 +25,7 @@ class FirebaseSetupScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Text(
-              'Nüans hasta notlarını bulutta saklamak için kendi Firebase projenize bağlanmalıdır. Aşağıdaki adımları bir kez uygulayın.',
+              'İNÜ SKY hasta notlarını bulutta saklamak için kendi Firebase projenize bağlanmalıdır. Aşağıdaki adımları bir kez uygulayın.',
               style: TextStyle(color: AppColors.muted, height: 1.45),
             ),
             const SizedBox(height: 28),

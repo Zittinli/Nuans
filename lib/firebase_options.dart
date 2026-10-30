@@ -1,19 +1,3 @@
-// Firebase yapılandırması.
-//
-// 1. https://console.firebase.google.com adresinden bir proje oluşturun.
-// 2. Authentication > Sign-in method > E-posta/Şifre'yi açın.
-//    Uygulama e-posta doğrulamasını zorunlu kılar ve tek kullanımlık
-//    e-posta adresleriyle kayıt/girişe izin vermez.
-// 3. Firestore Database'i production modunda başlatın.
-// 4. Project settings > Your apps > Android uygulaması ekleyin
-//    Paket adı: com.nuans.nuans
-// 5. Aşağıdaki değerleri Firebase konsolundaki Android uygulamasından doldurun
-//    veya şu komutu çalıştırın:
-//    dart pub global activate flutterfire_cli
-//    flutterfire configure
-// 6. firestore.rules dosyasını yayınlayın:
-//    firebase deploy --only firestore:rules
-
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
@@ -26,7 +10,7 @@ class DefaultFirebaseOptions {
 
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
-      throw UnsupportedError('Nüans şu an yalnızca Android APK için yapılandırıldı.');
+      throw UnsupportedError('İNÜ SKY şu an yalnızca Android APK için yapılandırıldı.');
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:

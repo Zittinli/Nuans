@@ -162,7 +162,7 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
         builder: (context) => AlertDialog(
           title: const Text('Formu aktar'),
           content: const Text(
-            'Seçilen Nüans form dosyası mevcut adı, alanları ve ekleri değiştirecek. Devam edilsin mi?',
+            'Seçilen İNÜ SKY form dosyası mevcut adı, alanları ve ekleri değiştirecek. Devam edilsin mi?',
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Vazgeç')),
@@ -207,7 +207,7 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('WhatsApp’ta dosyaya basıp Nüans ile aç. İndirmene gerek yok.')),
+        const SnackBar(content: Text('WhatsApp’ta dosyaya basıp İNÜ SKY ile aç. İndirmene gerek yok.')),
       );
     } catch (error) {
       if (!mounted) return;
@@ -367,6 +367,10 @@ class _FormTemplateEditorScreenState extends State<FormTemplateEditorScreen>
         sourceFileName: _sourceFileName,
         sourceFileKind: _sourceFileKind,
         isGlobal: widget.isGlobal,
+        visibleToEveryone: widget.template?.visibleToEveryone ?? false,
+        globalTemplateId: widget.template?.globalTemplateId,
+        sourceDoctorId: widget.template?.sourceDoctorId,
+        sourceTemplateId: widget.template?.sourceTemplateId,
         createdByUid: widget.template?.createdByUid,
         createdByEmail: widget.template?.createdByEmail,
         createdAt: widget.template?.createdAt ?? now,
@@ -651,21 +655,49 @@ class _GeneralTab extends StatelessWidget {
             final selected = categoryId == null
                 ? null
                 : categories.where((item) => item.id == categoryId).firstOrNull;
-            return DropdownButtonFormField<String?>(
-              value: selected?.id,
-              decoration: const InputDecoration(
-                labelText: 'Form kategorisi',
-                hintText: 'Zorunlu',
+            return InkWell(
+              onTap: categories.isEmpty
+                  ? null
+                  : () async {
+                      final picked = await showDialog<String>(
+                        context: context,
+                        builder: (dialogContext) => AlertDialog(
+                          title: const Text('Form kategorisi'),
+                          content: SizedBox(
+                            width: double.maxFinite,
+                            child: ListView(
+                              shrinkWrap: true,
+                              children: [
+                                for (final item in categories)
+                                  ListTile(
+                                    title: Text(item.name),
+                                    onTap: () => Navigator.pop(dialogContext, item.id),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(dialogContext),
+                              child: const Text('Vazgeç'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (picked != null) onCategoryChanged(picked);
+                    },
+              borderRadius: BorderRadius.circular(12),
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Form kategorisi',
+                  hintText: 'Zorunlu',
+                  suffixIcon: Icon(Icons.arrow_drop_down),
+                ),
+                child: Text(
+                  selected?.name ?? (categories.isEmpty ? 'Kategori yok' : 'Kategori seçin'),
+                  style: TextStyle(color: selected == null ? AppColors.muted : null),
+                ),
               ),
-              items: categories
-                  .map(
-                    (item) => DropdownMenuItem(
-                      value: item.id,
-                      child: Text(item.name),
-                    ),
-                  )
-                  .toList(),
-              onChanged: categories.isEmpty ? null : onCategoryChanged,
             );
           },
         ),

@@ -10,6 +10,7 @@ enum FormFieldType {
   singleChoice('Tek seçim', Icons.radio_button_checked),
   multiChoice('Çoklu seçim', Icons.checklist_outlined),
   rating('Puan 1–5', Icons.star_rate_outlined),
+  likert('Likert 1–5', Icons.linear_scale),
   table('Tablo', Icons.table_chart_outlined),
   section('Bölüm açılışı', Icons.web_asset_outlined),
   sectionEnd('Bölüm kapanışı', Icons.vertical_align_bottom);
@@ -286,6 +287,15 @@ String _formatSimple(FormFieldType type, dynamic value) {
     return value == true || value == 'true' ? 'Evet' : 'Hayır';
   }
   if (type == FormFieldType.rating) return '$value / 5';
+  if (type == FormFieldType.likert) {
+    final score = value is num ? value.toInt() : int.tryParse('$value');
+    return switch (score) {
+      1 => '1 — Hiç hissetmiyorum',
+      5 => '5 — Çok hissediyorum',
+      null => '$value',
+      _ => '$score / 5',
+    };
+  }
   if (value is List) return value.map((item) => '$item').join(', ');
   return '$value';
 }
@@ -372,6 +382,10 @@ class ClinicFormTemplate {
     this.sourceFileName,
     this.sourceFileKind,
     this.isGlobal = false,
+    this.visibleToEveryone = false,
+    this.globalTemplateId,
+    this.sourceDoctorId,
+    this.sourceTemplateId,
     this.createdByUid,
     this.createdByEmail,
     required this.createdAt,
@@ -388,6 +402,10 @@ class ClinicFormTemplate {
   final String? sourceFileName;
   final FormSourceKind? sourceFileKind;
   final bool isGlobal;
+  final bool visibleToEveryone;
+  final String? globalTemplateId;
+  final String? sourceDoctorId;
+  final String? sourceTemplateId;
   final String? createdByUid;
   final String? createdByEmail;
   final DateTime createdAt;
@@ -418,6 +436,10 @@ class ClinicFormTemplate {
       sourceFileName: data['sourceFileName'] as String?,
       sourceFileKind: FormSourceKind.fromName(data['sourceFileKind'] as String?),
       isGlobal: isGlobal || (data['isGlobal'] as bool? ?? false),
+      visibleToEveryone: data['visibleToEveryone'] as bool? ?? isGlobal,
+      globalTemplateId: data['globalTemplateId'] as String?,
+      sourceDoctorId: data['sourceDoctorId'] as String?,
+      sourceTemplateId: data['sourceTemplateId'] as String?,
       createdByUid: data['createdByUid'] as String?,
       createdByEmail: data['createdByEmail'] as String?,
       createdAt: _readDate(data['createdAt']),
@@ -436,6 +458,10 @@ class ClinicFormTemplate {
       'sourceFileName': sourceFileName,
       'sourceFileKind': sourceFileKind?.name,
       'isGlobal': isGlobal,
+      'visibleToEveryone': visibleToEveryone,
+      'globalTemplateId': globalTemplateId,
+      'sourceDoctorId': sourceDoctorId,
+      'sourceTemplateId': sourceTemplateId,
       'createdByUid': createdByUid,
       'createdByEmail': createdByEmail,
       'createdAt': Timestamp.fromDate(createdAt),
@@ -454,6 +480,10 @@ class ClinicFormTemplate {
     String? sourceFileName,
     FormSourceKind? sourceFileKind,
     bool? isGlobal,
+    bool? visibleToEveryone,
+    String? globalTemplateId,
+    String? sourceDoctorId,
+    String? sourceTemplateId,
     String? createdByUid,
     String? createdByEmail,
     DateTime? updatedAt,
@@ -469,6 +499,10 @@ class ClinicFormTemplate {
       sourceFileName: sourceFileName ?? this.sourceFileName,
       sourceFileKind: sourceFileKind ?? this.sourceFileKind,
       isGlobal: isGlobal ?? this.isGlobal,
+      visibleToEveryone: visibleToEveryone ?? this.visibleToEveryone,
+      globalTemplateId: globalTemplateId ?? this.globalTemplateId,
+      sourceDoctorId: sourceDoctorId ?? this.sourceDoctorId,
+      sourceTemplateId: sourceTemplateId ?? this.sourceTemplateId,
       createdByUid: createdByUid ?? this.createdByUid,
       createdByEmail: createdByEmail ?? this.createdByEmail,
       createdAt: createdAt,

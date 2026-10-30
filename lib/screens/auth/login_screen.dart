@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/auth_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/brand_logo.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -78,10 +79,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 constraints: const BoxConstraints(maxWidth: 460),
                 child: Column(
                   children: [
-                    const Icon(Icons.favorite_border, color: Colors.white, size: 44),
+                    const BrandLogo(size: 112),
                     const SizedBox(height: 12),
                     const Text(
-                      'Nüans',
+                      'İNÜ SKY',
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 36,

@@ -5,8 +5,8 @@ import '../../models/patient.dart';
 import '../../services/clinic_service.dart';
 import '../../services/scan_service.dart';
 import '../../theme/app_theme.dart';
-import 'form_builder_screen.dart';
 import 'form_fill_screen.dart';
+import 'form_template_editor_screen.dart';
 
 Future<void> showNewFormSheet({
   required BuildContext context,
@@ -63,7 +63,7 @@ class _NewFormSheet extends StatelessWidget {
                     onTap: () {
                       Navigator.pop(context);
                       Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const FormBuilderScreen()),
+                        MaterialPageRoute(builder: (_) => const FormTemplateEditorScreen()),
                       );
                     },
                   ),
