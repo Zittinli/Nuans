@@ -26,6 +26,12 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Hasta kayıtlarına fotoğraf ve video eklemek veya formları taramak için kameraya erişim gerekir.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Hasta kayıtlarına fotoğraf, video ve taranmış form eklemek için fotoğraf arşivinize erişim gerekir.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Konum erişimi, konum kullanan klinik özellikleri sunulduğunda ilgili bilgileri sağlamak için kullanılır.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
